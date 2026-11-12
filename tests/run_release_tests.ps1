@@ -78,7 +78,7 @@ $sdkRoot = $null
 foreach ($candidate in @($WindowsSdkRoot, 'D:\Windows Kits\10',
                         "${env:ProgramFiles(x86)}\Windows Kits\10",
                         "${env:ProgramFiles}\Windows Kits\10")) {
-    if ($candidate -and (Test-Path (Join-Path $candidate 'Include'))) { $sdkRoot = $candidate; break }
+    if ($candidate -and (Test-Path -LiteralPath "$candidate\Include")) { $sdkRoot = $candidate; break }
 }
 if (-not $sdkRoot) { throw "No Windows 10/11 SDK found." }
 $sdkVer = Get-ChildItem -Path (Join-Path $sdkRoot 'Include') -Directory -ErrorAction SilentlyContinue |

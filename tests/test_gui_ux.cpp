@@ -1,6 +1,7 @@
 // Headless interaction regression for the active product pages. Mouse/key events
 // drive actual ImGui widgets; callbacks and commands use the real Core consumer.
 #include "GakuMotion.hpp"
+#include "test_log_stub.hpp"
 #include "../preview/GkMockState.hpp"
 #include "imgui_internal.h"
 #include <cstdio>
