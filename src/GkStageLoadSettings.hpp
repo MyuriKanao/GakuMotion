@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GkStageLoadPolicy.hpp"
+#include "GkStageLighting.hpp"
 #include "GkJsonLite.hpp"
 #include "GkMotionData.hpp"
 #include <atomic>
@@ -21,6 +22,7 @@ namespace GakuMotion::stage_load
     struct Settings
     {
         std::string key;
+        stage_light::Settings lighting;
 
         bool Load(const std::string& path, std::string& error)
         {
@@ -34,7 +36,26 @@ namespace GakuMotion::stage_load
                 error = "Invalid photography stage settings (version/load_replacement_key)";
                 return false;
             }
+            stage_light::Settings loadedLighting;
+            if (const auto* saved = root.Find("live_lighting"))
+            {
+                const char* names[]{"mode", "palette", "strength", "bpm", "speed"};
+                for (const char* name : names)
+                {
+                    const auto* value = saved->Find(name);
+                    if (!saved->IsObject() || !value || !value->IsNumber() || !std::isfinite(value->numberValue))
+                    { error = "Invalid live lighting settings"; return false; }
+                }
+                const double mode = saved->Find("mode")->numberValue, palette = saved->Find("palette")->numberValue;
+                if (mode < 0 || mode > 3 || std::floor(mode) != mode || palette < 0 || palette > 2 || std::floor(palette) != palette)
+                { error = "Invalid live lighting mode/palette"; return false; }
+                loadedLighting = {static_cast<stage_light::Mode>(mode), static_cast<int>(palette),
+                    saved->Find("strength")->AsFloat(1), saved->Find("bpm")->AsFloat(120), saved->Find("speed")->AsFloat(1)};
+                if (stage_light::Sanitize(loadedLighting) != loadedLighting)
+                { error = "Live lighting settings out of range"; return false; }
+            }
             key = target->stringValue;
+            lighting = loadedLighting;
             error.clear();
             return true;
         }
@@ -42,13 +63,16 @@ namespace GakuMotion::stage_load
         bool Save(const std::string& path, std::string& error) const
         {
             error.clear();
-            if (path.empty() || (!key.empty() && !IsTarget(key)))
+            if (path.empty() || (!key.empty() && !IsTarget(key)) || stage_light::Sanitize(lighting) != lighting)
             { error = "Invalid photography stage settings"; return false; }
             const std::filesystem::path destination(MotionPathFromUtf8(path));
             std::error_code ec;
             if (!destination.parent_path().empty()) std::filesystem::create_directories(destination.parent_path(), ec);
             if (ec) { error = ec.message(); return false; }
-            const std::string bytes = "{\n  \"version\": 1,\n  \"load_replacement_key\": \"" + key + "\"\n}\n";
+            const std::string bytes = "{\n  \"version\": 1,\n  \"load_replacement_key\": \"" + key +
+                "\",\n  \"live_lighting\": {\"mode\": " + std::to_string(static_cast<int>(lighting.mode)) +
+                ", \"palette\": " + std::to_string(lighting.palette) + ", \"strength\": " + std::to_string(lighting.strength) +
+                ", \"bpm\": " + std::to_string(lighting.bpm) + ", \"speed\": " + std::to_string(lighting.speed) + "}\n}\n";
             static std::atomic<uint64_t> sequence{0};
             std::filesystem::path temp = destination;
             temp += "." + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "." +

@@ -23,7 +23,7 @@ $importInputs = @('interop/GakuMotion.VmdImporter.Native/GakuMotion.VmdImporter.
     'candidate/csharp/src/GakuMotion.VmdImporter/Resources/mmd_source_skeleton.json',
     'tools/vmd2gkmotion/gakumas_morph_map.json', 'tools/vmd2gkmotion/vmd_eye_profile.json',
     'tools/vmd2gkmotion/tooth_appearance_lut.json', 'tools/vmd2gkmotion/root_retarget_profiles.json')
-$inputs = if ($Target -eq 'Runtime') { $runtimeInputs } elseif ($Target -eq 'NativeAOT') { $importInputs } elseif ($Target -eq 'Contracts') { @('tests/test_stage_load_runtime.cpp') } else { $runtimeInputs + $importInputs }
+$inputs = if ($Target -eq 'Runtime') { $runtimeInputs } elseif ($Target -eq 'NativeAOT') { $importInputs } elseif ($Target -eq 'Contracts') { @('tests/test_stage_load_runtime.cpp', 'tests/test_stage_lighting.cpp', 'tests/test_stage_lighting_runtime.cpp') } else { $runtimeInputs + $importInputs }
 foreach ($inputPath in $inputs) {
     if (-not (Test-Path -LiteralPath (Join-Path $repo $inputPath) -PathType Leaf)) { throw ('Missing build input: ' + $inputPath) }
 }
@@ -97,16 +97,18 @@ $env:LIB = @((Join-Path $msvc.FullName 'lib\x64'), (Join-Path $sdk "Lib\$($sdkVe
     (Join-Path $sdk "Lib\$($sdkVersion.Name)\um\x64")) -join ';'
 $env:PATH = (Join-Path $msvc.FullName 'bin\Hostx64\x64') + ';' + (Join-Path $sdk "bin\$($sdkVersion.Name)\x64") + ';' + $env:PATH
 $compiler = Join-Path $msvc.FullName 'bin\Hostx64\x64\cl.exe'
-$exe = Join-Path $OutputRoot 'stage_runtime_contracts.exe'
-$obj = Join-Path $OutputRoot 'stage_runtime_contracts.obj'
-$argsForCompiler = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/MT', '/W4',
-    "/I$(Join-Path $repo 'src')", "/I$(Join-Path $repo 'include')",
-    (Join-Path $repo 'tests\test_stage_load_runtime.cpp'), "/Fe:$exe", "/Fo:$obj")
 Push-Location -LiteralPath $OutputRoot
 try {
-    & $compiler @argsForCompiler
-    if ($LASTEXITCODE -ne 0) { throw ('Synthetic contract build failed: ' + $LASTEXITCODE) }
-    & $exe
-    if ($LASTEXITCODE -ne 0) { throw ('Synthetic contract tests failed: ' + $LASTEXITCODE) }
+    foreach ($test in @('stage_load_runtime', 'stage_lighting', 'stage_lighting_runtime')) {
+        $exe = Join-Path $OutputRoot ($test + '_contracts.exe')
+        $obj = Join-Path $OutputRoot ($test + '_contracts.obj')
+        $argsForCompiler = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/MT', '/W4',
+            "/I$(Join-Path $repo 'src')", "/I$(Join-Path $repo 'include')", "/I$(Join-Path $repo 'deps\KineTexture\src')",
+            (Join-Path $repo ('tests\test_' + $test + '.cpp')), "/Fe:$exe", "/Fo:$obj")
+        & $compiler @argsForCompiler
+        if ($LASTEXITCODE -ne 0) { throw ('Synthetic contract build failed: ' + $test + ' ' + $LASTEXITCODE) }
+        & $exe
+        if ($LASTEXITCODE -ne 0) { throw ('Synthetic contract tests failed: ' + $test + ' ' + $LASTEXITCODE) }
+    }
 } finally { Pop-Location }
 Write-Host 'Synthetic contracts passed.'

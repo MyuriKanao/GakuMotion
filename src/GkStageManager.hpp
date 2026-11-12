@@ -23,6 +23,7 @@
 #include <limits>
 #include "GkStageCleanup.hpp"
 #include "GkStageLoadPolicy.hpp"
+#include "GkStageLighting.hpp"
 
 namespace GakuMotion
 {
@@ -80,6 +81,7 @@ namespace GakuMotion
 		// 光影与场景节点控制
 		bool lightingEffectsEnabled{true}; // 合并后的“光影效果”开关
 		bool customNodeControl{false};     // “自定义场景节点”手动控制模式
+		stage_light::Settings liveLighting;
 
 		bool operator==(const StageSettings& rhs) const noexcept
 		{
@@ -101,7 +103,7 @@ namespace GakuMotion
 			       std::fabs(stagePosXOffset - rhs.stagePosXOffset) < 1e-4f &&
 			       std::fabs(stagePosZOffset - rhs.stagePosZOffset) < 1e-4f &&
 			       lightingEffectsEnabled == rhs.lightingEffectsEnabled &&
-			       customNodeControl == rhs.customNodeControl;
+			       customNodeControl == rhs.customNodeControl && liveLighting == rhs.liveLighting;
 		}
 
 		bool operator!=(const StageSettings& rhs) const noexcept { return !(*this == rhs); }
@@ -195,6 +197,8 @@ namespace GakuMotion
 		// unfinished asynchronous load must report false when hiding is requested.
 		bool (*fnSetMountedStageActive)(bool){nullptr};
 		bool (*fnIsMountedStageObject)(void*){nullptr};
+		bool (*fnUpdateStageLighting)(const stage_light::Settings&, double, std::string&){nullptr};
+		bool (*fnRestoreStageLighting)(){nullptr};
 	};
 
 	struct StageAccessScope
@@ -215,6 +219,7 @@ namespace GakuMotion
 		std::vector<StageCandidate> candidates;
 		std::string currentSceneName;
 		std::string statusNotice;
+		std::string lightingStatusNotice;
 
 		// 依赖的 Unity API 桥接
 		StageUnityApi api;
@@ -256,6 +261,7 @@ namespace GakuMotion
 		{
 			std::lock_guard<std::mutex> lock(stageMutex);
 			if (settings.hideBackground || settings.greenScreenActive || settings.overrideCameraClear ||
+				settings.liveLighting.mode != stage_light::Mode::Native ||
 				!settings.lightingEffectsEnabled || settings.customNodeControl ||
 				!settings.customStageKey.empty() || !mountedStageKey.empty() || stageLoadRequested ||
 				stageUnloadRequested || backgroundCurrentlyHidden || !lightingCurrentlyEnabled || cameraStateSaved) return true;
@@ -298,6 +304,7 @@ namespace GakuMotion
 		{
 			std::lock_guard<std::mutex> lock(stageMutex);
 			StageSettings sanitized = newSettings;
+			sanitized.liveLighting = stage_light::Sanitize(sanitized.liveLighting);
 			const bool invalidReplacement = !sanitized.loadReplacementKey.empty() &&
 				!stage_load::IsTarget(sanitized.loadReplacementKey);
 			if (invalidReplacement) sanitized.loadReplacementKey.clear();
@@ -531,6 +538,10 @@ namespace GakuMotion
 		void AbandonScene()
 		{
 			std::lock_guard<std::mutex> lock(stageMutex);
+			// The bridge restores only fresh matching component identities, including
+			// an old additive scene that remains loaded after its presenter changes.
+			if (api.fnRestoreStageLighting && !api.fnRestoreStageLighting())
+				lightingStatusNotice = "灯光恢复待重试";
 			if (api.fnAbandonScene) api.fnAbandonScene();
 			candidates.clear();
 			candidatesDiscovered = false;
@@ -558,6 +569,7 @@ namespace GakuMotion
 		void ReleaseCurrentSceneOverrides()
 		{
 			std::lock_guard<std::mutex> lock(stageMutex);
+			if (api.fnRestoreStageLighting) api.fnRestoreStageLighting();
 			StageAccessScope access(api);
 			if (!access.ready || !api.fnSetActive) return;
 			for (const auto& c : candidates)
@@ -770,7 +782,8 @@ namespace GakuMotion
 		// -------------------------------------------------------------------------
 		// 每帧更新与应用（在 Unity 主线程 LateUpdate 执行）
 		// -------------------------------------------------------------------------
-		void OnLateUpdate(void* activeActor, float /*deltaTime*/, const std::string& sceneName, void* mainCamera)
+		void OnLateUpdate(void* activeActor, float /*deltaTime*/, const std::string& sceneName, void* mainCamera,
+			double performanceTime = 0)
 		{
 			std::lock_guard<std::mutex> lock(stageMutex);
 			currentSceneName = sceneName;
@@ -866,6 +879,13 @@ namespace GakuMotion
 			}
 			if (!mountedStageKey.empty() && api.fnSetMountedStageActive)
 				api.fnSetMountedStageActive(true);
+			if (api.fnUpdateStageLighting)
+			{
+				auto lighting = settings.liveLighting;
+				if (!settings.lightingEffectsEnabled || settings.customNodeControl)
+					lighting.mode = stage_light::Mode::Native;
+				api.fnUpdateStageLighting(lighting, performanceTime, lightingStatusNotice);
+			}
 
 			// 5. 相机底色与清除控制 (Chroma Key / SolidColor Clear)
 			const bool shouldChroma = settings.greenScreenActive && settings.overrideCameraClear;
@@ -1060,7 +1080,8 @@ namespace GakuMotion
 	private:
 		bool RestoreForSuspension(void* camera)
 		{
-			bool complete = true;
+			bool complete = !api.fnRestoreStageLighting || api.fnRestoreStageLighting();
+			lightingStatusNotice = complete ? "灯光已释放，保持原生状态" : "灯光恢复待重试";
 			bool hasChangedCandidates = false;
 			for (const auto& c : candidates)
 				if (c.injectionTouched || c.currentlyActive != c.originalActive) { hasChangedCandidates = true; break; }

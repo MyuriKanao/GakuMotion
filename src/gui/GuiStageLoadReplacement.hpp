@@ -11,25 +11,18 @@ namespace GakuMotion
 	{
 		ImGui::PushID("stage_load_replacement");
 		ImGui::TextUnformatted("摄影舞台替换（实验，载入时生效）");
-		ImGui::TextWrapped("中庭舞台已获用户实测正常反馈；通用 Live 与初星舞台的完整灯光效果尚未完成。");
-		static constexpr const char* keys[] = {
-			"", "env_3d_live_all001-00-noon", "env_3d_prod_hifstage-00-00-noon",
-			"env_3d_live_courtyard-00-00-noon"
-		};
-		static constexpr const char* names[] = {
-			"原生摄影背景", "通用 Live 舞台（灯光未完成）", "初星舞台（灯光未完成）", "中庭舞台（日中）"
-		};
-		int selectedIndex = 0;
-		for (int i = 1; i < 4; ++i)
-			if (ctx.stageSettings.loadReplacementKey == keys[i]) selectedIndex = i;
+		ImGui::TextWrapped("%zu 个客户端场景入口；新增场景需游戏内验收。通用 Live、初星与试镜舞台可在 [舞台] 页启用程序化灯光。", stage_load::stages.size());
+		const auto* current = stage_load::FindStage(ctx.stageSettings.loadReplacementKey);
 		ImGui::BeginDisabled(!ctx.fnSetStageLoadReplacement);
-		if (ImGui::BeginCombo("下次摄影背景", names[selectedIndex]))
+		if (ImGui::BeginCombo("下次摄影背景", current ? current->name : "原生摄影背景", ImGuiComboFlags_HeightLarge))
 		{
-			for (int i = 0; i < 4; ++i)
+			if (ImGui::Selectable("原生摄影背景", !current) && ctx.fnSetStageLoadReplacement)
+				ctx.fnSetStageLoadReplacement(ctx.self, "");
+			for (const auto& stage : stage_load::stages)
 			{
-				const bool selected = selectedIndex == i;
-				if (ImGui::Selectable(names[i], selected) && ctx.fnSetStageLoadReplacement)
-					ctx.fnSetStageLoadReplacement(ctx.self, keys[i]);
+				const bool selected = current == &stage;
+				if (ImGui::Selectable(stage.name, selected) && ctx.fnSetStageLoadReplacement)
+					ctx.fnSetStageLoadReplacement(ctx.self, stage.key);
 				if (selected) ImGui::SetItemDefaultFocus();
 			}
 			ImGui::EndCombo();

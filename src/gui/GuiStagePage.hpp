@@ -7,6 +7,7 @@
 #include "GuiOverlayCommon.hpp"
 #include "../GkGuiOverlay.hpp"
 #include "../GkStageManager.hpp"
+#include "GuiStageLighting.hpp"
 
 #ifdef GKMOTION_GUI_ACTIVE
 namespace GakuMotion
@@ -209,6 +210,7 @@ namespace GakuMotion
 		ImGui::EndDisabled();
 
 		ImGui::EndDisabled(); // !customNodeActive
+		stageChanged |= DrawStageLightingControl(settings, ctx);
 
 		ImGui::Spacing();
 		ImGui::Separator();

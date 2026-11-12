@@ -1192,6 +1192,7 @@ namespace
 
 #include "GkSceneOwnerRuntime.hpp"
 #include "GkStageLoadOverride.hpp"
+#include "GkStageLightingRuntime.hpp"
 #include "GkPageObservation.hpp"
 
 	GakuMotion::injection::OwnerSnapshot g_captureOriginOwner;
@@ -1488,6 +1489,10 @@ namespace
 		if (g_sceneOwner.Valid() || oldSceneLost) g_pendingProtectionFault.store(false, std::memory_order_release);
 		// A retired asynchronous load can finish even with no actor callbacks.
 		StageLoader::EnsureNoOrphanedStages();
+		const auto& stage = core.stageManager.settings;
+		StageLightingRuntime::PollRestoration(core.InjectionAllowed() && !core.stageStoppedByTransport &&
+			core.stageManager.injectionEnabled && stage.lightingEffectsEnabled && !stage.customNodeControl &&
+			stage.liveLighting.mode != GakuMotion::stage_light::Mode::Native);
 		const auto state = core.injectionPolicy.Read();
 #ifdef GKMOTION_CAPTURE_DIAGNOSTICS
 		PageObservation::Poll(CustomCaptureActive());
@@ -2107,8 +2112,11 @@ void MotionRuntimeReady(void*)
 	stageApi.fnAbandonScene = StageLoader::Abandon;
 	stageApi.fnSetMountedStageActive = StageLoader::SetMountedStageActive;
 	stageApi.fnIsMountedStageObject = StageLoader::IsMountedStageObject;
+	stageApi.fnUpdateStageLighting = StageLightingRuntime::Update;
+	stageApi.fnRestoreStageLighting = StageLightingRuntime::Restore;
 
 	StageLoader::ResolveReflection(g_gameAssembly);
+	StageLightingRuntime::Resolve(g_gameAssembly);
 	g_captureAnimatorUpdateMethod = StageLoader::metadata.Find(g_animatorKlass, "Update", false, {0x01}, {{0x0c}});
 	void* sceneClass = FindClass("UnityEngine.CoreModule.dll", "UnityEngine.SceneManagement", "Scene");
 	g_activeSceneMethod = StageLoader::metadata.Find(
@@ -2746,7 +2754,7 @@ void MotionActorTick(void*, void* activeActor, float deltaTime)
 		const bool applyStage = core.InjectionAllowed() && !core.stageStoppedByTransport &&
 			core.stageManager.HasCustomizations() && core.PrepareInjection();
 		core.stageManager.SetInjectionEnabled(applyStage, mainCam);
-		core.stageManager.OnLateUpdate(activeActor, dtToPass, g_currentSceneName, mainCam);
+		core.stageManager.OnLateUpdate(activeActor, dtToPass, g_currentSceneName, mainCam, player.currentTime);
 		if (core.InjectionAllowed() && !core.stageManager.candidatesDiscovered)
 			core.stageManager.RescanCandidates(activeActor); // Read-only discovery while GM stage controls are inactive.
 	}

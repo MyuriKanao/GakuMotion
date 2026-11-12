@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GkInjectionPolicy.hpp"
+#include "GkStageCatalog.hpp"
 #include <string>
 #include <string_view>
 
@@ -8,9 +9,7 @@ namespace GakuMotion::stage_load
 {
     inline bool IsTarget(std::string_view key) noexcept
     {
-        return key == "env_3d_live_all001-00-noon" ||
-            key == "env_3d_prod_hifstage-00-00-noon" ||
-            key == "env_3d_live_courtyard-00-00-noon";
+        return FindStage(key) != nullptr;
     }
 
     // A rewritten resource-name request is not proof of a completed load.

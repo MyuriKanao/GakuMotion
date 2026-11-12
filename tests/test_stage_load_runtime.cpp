@@ -296,8 +296,9 @@ namespace StageRuntimeHarness
         result = seam::GetEnvAssetId(background, 6, &methodToken);
         Check(result == nativeResult && nativeCall.count == 1 && allocations == 1 && GakuMotion::stage_load::receipt.target.empty(),
             "allocation failure preserves native return and creates no receipt");
-        for (const char* selection : {"env_3d_live_all001-00-noon", "env_3d_prod_hifstage-00-00-noon", "env_3d_live_courtyard-00-00-noon"})
+        for (const auto& stage : GakuMotion::stage_load::stages)
         {
+            const char* selection = stage.key;
             Reset(); GakuMotion::Core::Instance().stageManager.selected = selection;
             result = seam::GetEnvAssetId(background, 19, &methodToken);
             Check(Value(result) == selection && result != nativeResult && nativeCall.count == 1 && nativeCall.background == background &&

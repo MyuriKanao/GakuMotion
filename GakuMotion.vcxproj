@@ -253,6 +253,10 @@
     <ClInclude Include="src\GkSolePitchEnvelope.hpp" />
     <ClInclude Include="src\GkSoleProxyProfile.hpp" />
     <ClInclude Include="src\GkStageManager.hpp" />
+    <ClInclude Include="src\GkStageCatalog.hpp" />
+    <ClInclude Include="src\GkStageLighting.hpp" />
+    <ClInclude Include="src\GkStageLightingRuntime.hpp" />
+    <ClInclude Include="src\gui\GuiStageLighting.hpp" />
     <ClInclude Include="src\GkWaistSupport.hpp" />
   </ItemGroup>
   <!-- ======================================================================
