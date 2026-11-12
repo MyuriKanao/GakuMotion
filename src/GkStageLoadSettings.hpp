@@ -31,7 +31,7 @@ namespace GakuMotion::stage_load
             const auto* version = root.Find("version");
             const auto* target = root.Find("load_replacement_key");
             if (!root.IsObject() || !version || !version->IsNumber() || version->numberValue != 1 ||
-                !target || !target->IsString() || (!target->stringValue.empty() && !IsTarget(target->stringValue)))
+                !target || !target->IsString() || (!target->stringValue.empty() && !IsSavedTarget(target->stringValue)))
             {
                 error = "Invalid photography stage settings (version/load_replacement_key)";
                 return false;
@@ -47,10 +47,22 @@ namespace GakuMotion::stage_load
                     { error = "Invalid live lighting settings"; return false; }
                 }
                 const double mode = saved->Find("mode")->numberValue, palette = saved->Find("palette")->numberValue;
-                if (mode < 0 || mode > 3 || std::floor(mode) != mode || palette < 0 || palette > 2 || std::floor(palette) != palette)
+                if (mode < 0 || mode > 4 || std::floor(mode) != mode || palette < 0 || palette > 2 || std::floor(palette) != palette)
                 { error = "Invalid live lighting mode/palette"; return false; }
                 loadedLighting = {static_cast<stage_light::Mode>(mode), static_cast<int>(palette),
                     saved->Find("strength")->AsFloat(1), saved->Find("bpm")->AsFloat(120), saved->Find("speed")->AsFloat(1)};
+                if (const auto* song = saved->Find("song_key"))
+                {
+                    if (!song->IsString() || (!song->stringValue.empty() && !native_live::SongKey(song->stringValue)))
+                    { error = "Invalid native live song key"; return false; }
+                    loadedLighting.songKey = song->stringValue;
+                }
+                if (const auto* offset = saved->Find("native_offset"))
+                {
+                    if (!offset->IsNumber() || !std::isfinite(offset->numberValue))
+                    { error = "Invalid native live timeline offset"; return false; }
+                    loadedLighting.nativeOffset = offset->AsFloat(0);
+                }
                 if (stage_light::Sanitize(loadedLighting) != loadedLighting)
                 { error = "Live lighting settings out of range"; return false; }
             }
@@ -63,7 +75,7 @@ namespace GakuMotion::stage_load
         bool Save(const std::string& path, std::string& error) const
         {
             error.clear();
-            if (path.empty() || (!key.empty() && !IsTarget(key)) || stage_light::Sanitize(lighting) != lighting)
+            if (path.empty() || (!key.empty() && !IsSavedTarget(key)) || stage_light::Sanitize(lighting) != lighting)
             { error = "Invalid photography stage settings"; return false; }
             const std::filesystem::path destination(MotionPathFromUtf8(path));
             std::error_code ec;
@@ -72,7 +84,8 @@ namespace GakuMotion::stage_load
             const std::string bytes = "{\n  \"version\": 1,\n  \"load_replacement_key\": \"" + key +
                 "\",\n  \"live_lighting\": {\"mode\": " + std::to_string(static_cast<int>(lighting.mode)) +
                 ", \"palette\": " + std::to_string(lighting.palette) + ", \"strength\": " + std::to_string(lighting.strength) +
-                ", \"bpm\": " + std::to_string(lighting.bpm) + ", \"speed\": " + std::to_string(lighting.speed) + "}\n}\n";
+                ", \"bpm\": " + std::to_string(lighting.bpm) + ", \"speed\": " + std::to_string(lighting.speed) +
+                ", \"song_key\": \"" + lighting.songKey + "\", \"native_offset\": " + std::to_string(lighting.nativeOffset) + "}\n}\n";
             static std::atomic<uint64_t> sequence{0};
             std::filesystem::path temp = destination;
             temp += "." + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "." +

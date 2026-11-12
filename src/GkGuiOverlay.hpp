@@ -121,6 +121,7 @@ namespace GakuMotion
 		std::string stageStatusNotice;
 		std::string stageLoadNotice;
 		std::string stageLightingNotice;
+		std::string nativeLiveCatalogNotice;
 		void (*fnSetStageLoadReplacement)(void*, const char*){nullptr};
 		void (*fnSetStageSettings)(void*, const StageSettings&){nullptr};
 		void (*fnSetStagePreset)(void*, int){nullptr};

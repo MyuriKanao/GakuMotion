@@ -6,27 +6,32 @@
 #include <map>
 #include <limits>
 #include <vector>
+#include "GkNativeLive.hpp"
 
 namespace GakuMotion::stage_light
 {
-    enum class Mode { Native, Wash, Breath, Cycle };
+    enum class Mode { Native, Wash, Breath, Cycle, SongTimeline };
     struct Settings
     {
         Mode mode{Mode::Native};
         int palette{0};
         float strength{1.0f}, bpm{120.0f}, speed{1.0f};
+        std::string songKey;
+        float nativeOffset{0.0f};
         bool operator==(const Settings&) const = default;
     };
 
     inline Settings Sanitize(Settings value)
     {
-        if (value.mode < Mode::Native || value.mode > Mode::Cycle) value.mode = Mode::Native;
+        if (value.mode < Mode::Native || value.mode > Mode::SongTimeline) value.mode = Mode::Native;
         value.palette = std::clamp(value.palette, 0, 2);
         auto limit = [](float v, float low, float high, float fallback)
         { return std::isfinite(v) ? std::clamp(v, low, high) : fallback; };
         value.strength = limit(value.strength, 0.0f, 3.0f, 1.0f);
         value.bpm = limit(value.bpm, 30.0f, 240.0f, 120.0f);
         value.speed = limit(value.speed, 0.1f, 3.0f, 1.0f);
+        value.nativeOffset = limit(value.nativeOffset, -120.0f, 120.0f, 0.0f);
+        if (!value.songKey.empty() && !native_live::SongKey(value.songKey)) value.songKey.clear();
         return value;
     }
 
@@ -122,6 +127,20 @@ namespace GakuMotion::stage_light
         int lights{}, beams{};
         bool HasChanges() const { return !originals.empty(); }
 
+        bool Capture(int scene)
+        {
+            Access access(api);
+            if (!access.ready || !api.read) return false;
+            for (const auto& target : access.targets)
+            {
+                if (target.id.scene != scene || originals.contains(target.id)) continue;
+                Values value;
+                if (!api.read(target, value)) return false;
+                originals.emplace(target.id, value);
+            }
+            return true;
+        }
+
         bool Restore()
         {
             lights = beams = 0;
@@ -136,7 +155,7 @@ namespace GakuMotion::stage_light
         {
             settings = Sanitize(settings);
             lights = beams = 0;
-            if (!scene || settings.mode == Mode::Native) return Restore();
+            if (!scene || settings.mode == Mode::Native || settings.mode == Mode::SongTimeline) return Restore();
             if (restorePending) { Restore(); return false; } // Cleanup precedes any new writes.
             Access access(api);
             if (!access.ready || !api.read || !api.write) return false;

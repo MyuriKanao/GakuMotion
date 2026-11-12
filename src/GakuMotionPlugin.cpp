@@ -1193,6 +1193,7 @@ namespace
 #include "GkSceneOwnerRuntime.hpp"
 #include "GkStageLoadOverride.hpp"
 #include "GkStageLightingRuntime.hpp"
+#include "GkNativeLiveRuntime.hpp"
 #include "GkPageObservation.hpp"
 
 	GakuMotion::injection::OwnerSnapshot g_captureOriginOwner;
@@ -1490,9 +1491,12 @@ namespace
 		// A retired asynchronous load can finish even with no actor callbacks.
 		StageLoader::EnsureNoOrphanedStages();
 		const auto& stage = core.stageManager.settings;
-		StageLightingRuntime::PollRestoration(core.InjectionAllowed() && !core.stageStoppedByTransport &&
+		NativeLiveRuntime::PollRestoration(core.InjectionAllowed() && !core.stageStoppedByTransport &&
 			core.stageManager.injectionEnabled && stage.lightingEffectsEnabled && !stage.customNodeControl &&
-			stage.liveLighting.mode != GakuMotion::stage_light::Mode::Native);
+			stage.liveLighting.mode != GakuMotion::stage_light::Mode::Native, stage.liveLighting);
+		core.nativeLiveCatalogNotice = NativeLiveRuntime::catalogNotice;
+		if (stage.liveLighting.mode == GakuMotion::stage_light::Mode::SongTimeline)
+			core.stageManager.lightingStatusNotice = NativeLiveRuntime::Notice(stage.liveLighting);
 		const auto state = core.injectionPolicy.Read();
 #ifdef GKMOTION_CAPTURE_DIAGNOSTICS
 		PageObservation::Poll(CustomCaptureActive());
@@ -2112,11 +2116,12 @@ void MotionRuntimeReady(void*)
 	stageApi.fnAbandonScene = StageLoader::Abandon;
 	stageApi.fnSetMountedStageActive = StageLoader::SetMountedStageActive;
 	stageApi.fnIsMountedStageObject = StageLoader::IsMountedStageObject;
-	stageApi.fnUpdateStageLighting = StageLightingRuntime::Update;
-	stageApi.fnRestoreStageLighting = StageLightingRuntime::Restore;
+	stageApi.fnUpdateStageLighting = NativeLiveRuntime::Update;
+	stageApi.fnRestoreStageLighting = NativeLiveRuntime::Restore;
 
 	StageLoader::ResolveReflection(g_gameAssembly);
 	StageLightingRuntime::Resolve(g_gameAssembly);
+	NativeLiveRuntime::Initialize(g_gameAssembly);
 	g_captureAnimatorUpdateMethod = StageLoader::metadata.Find(g_animatorKlass, "Update", false, {0x01}, {{0x0c}});
 	void* sceneClass = FindClass("UnityEngine.CoreModule.dll", "UnityEngine.SceneManagement", "Scene");
 	g_activeSceneMethod = StageLoader::metadata.Find(
@@ -3017,6 +3022,7 @@ void MotionShutdown(void*)
 		GakuMotion::host::mainThread.isMainThread(GakuMotion::host::mainThread.context))
 		RevokeProtectedInjection();
 	GakuMotion::capture::Shutdown();
+	NativeLiveRuntime::Shutdown();
 	StageLoadOverride::Shutdown();
 	SceneOwnerRuntime::Shutdown();
 	ReleasePendingFileDialog();

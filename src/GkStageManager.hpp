@@ -254,6 +254,8 @@ namespace GakuMotion
 		std::string GetLoadReplacementKey() const
 		{
 			std::lock_guard<std::mutex> lock(stageMutex);
+			if (settings.liveLighting.mode == stage_light::Mode::SongTimeline)
+				if (auto song = native_live::catalog.Find(settings.liveLighting.songKey)) return song->stage;
 			return settings.loadReplacementKey;
 		}
 
@@ -306,7 +308,7 @@ namespace GakuMotion
 			StageSettings sanitized = newSettings;
 			sanitized.liveLighting = stage_light::Sanitize(sanitized.liveLighting);
 			const bool invalidReplacement = !sanitized.loadReplacementKey.empty() &&
-				!stage_load::IsTarget(sanitized.loadReplacementKey);
+				!stage_load::IsSavedTarget(sanitized.loadReplacementKey);
 			if (invalidReplacement) sanitized.loadReplacementKey.clear();
 			const bool replacementChanged = settings.loadReplacementKey != sanitized.loadReplacementKey;
 			if (settings.customStageKey != newSettings.customStageKey) stageMountFailed = false;

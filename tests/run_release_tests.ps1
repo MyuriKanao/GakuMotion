@@ -166,6 +166,14 @@ if ($LASTEXITCODE -ne 0) { throw "Stage-lighting adapter build failed (exit=$LAS
 if ($LASTEXITCODE -ne 0) { throw "Stage-lighting adapter tests failed (exit=$LASTEXITCODE)" }
 
 Write-Host "=== [3/3] ImGui overlay skeleton syntax check ===" -ForegroundColor Cyan
+foreach ($nativeTest in @('native_live', 'native_live_graph', 'native_live_task', 'native_live_catalog')) {
+    $nativeExe = Join-Path $buildDir ('test_' + $nativeTest + '.exe')
+    & $compiler '/nologo' '/std:c++20' '/utf-8' '/EHsc' '/MT' '/W4' "/I$srcDir" "/I$incDir" "/I$KineTextureInclude" `
+        (Join-Path $PSScriptRoot ('test_' + $nativeTest + '.cpp')) "/Fe:$nativeExe" "/Fo:$(Join-Path $objDir ($nativeTest + '.obj'))"
+    if ($LASTEXITCODE -ne 0) { throw ('Native Live contract build failed: ' + $nativeTest) }
+    & $nativeExe
+    if ($LASTEXITCODE -ne 0) { throw ('Native Live contract test failed: ' + $nativeTest) }
+}
 if (Test-Path (Join-Path $ImGuiInclude 'imgui.h')) {
     $syntaxArgs = @('-nologo', '/std:c++20', '/utf-8', '/Zs', '/W3', '/EHsc', '/DGKMOTION_ENABLE_IMGUI',
                     "/I$srcDir", "/I$incDir", "/I$KineTextureInclude", "/I$ImGuiInclude", $syntaxSource)
