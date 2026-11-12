@@ -12,7 +12,8 @@ namespace NativeLiveRuntime
             if (!candidate) continue;
             r::Require(!info || info==candidate,"template has conflicting BPM maps");info=candidate;
         }
-        r::Require(info!=nullptr,"template has no native BPM map; select universal beat lighting");
+        if (!info) throw r::Failure("native BPM map was not injected into equipment tracks (cloned BPM tracks: "+
+            std::to_string(graph.clone.bpmTracks)+"); select universal beat lighting");
         const bool ready=map.Build(graph.duration,[&](double time) {
             float at=static_cast<float>(time);void* args[]{&at};return static_cast<double>(r::Read<float>(evaluateBpm,info,args));
         });

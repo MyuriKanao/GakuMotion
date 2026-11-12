@@ -537,6 +537,26 @@ int main(int argc, char** argv)
 	TestCameraFollowTargetControls(root);
 	TestUnifiedCameraModeControls(root);
 	{
+		// Outside Photography the panel is disabled, but the lighting template
+		// decides the next stage load and must be choosable and saved there.
+		Harness app(root);
+		const auto config = app.fixture / "config-lighting";
+		std::filesystem::create_directories(config);
+		app.core.configRoot = config.string();
+		app.contextPatch = [](GuiContext& context) { context.injectionAllowed = false; };
+		app.Settle();
+		app.Click("Live 舞台灯光（下次进入偶像摄影时生效）"); app.Settle();
+		app.Click("灯光效果"); app.Click("原生模板 · 跟随曲库节拍"); app.Settle();
+		app.core.ProcessPendingStageLoadCommands();
+		Check(app.core.stageManager.settings.liveLighting.mode == stage_light::Mode::SongTimeline,
+			"disabled panel lighting choice reaches the next-load preference");
+		stage_load::Settings saved; std::string error;
+		Check(saved.Load((config / "stage.json").string(), error) && saved.lighting.mode == stage_light::Mode::SongTimeline,
+			"disabled panel lighting choice is saved before entering Photography");
+		Check(app.Text().find("无需再切换一次") != std::string::npos,
+			"disabled panel explains that the next Photography entry uses the choice directly");
+	}
+	{
 		const ImGuiConfigFlags originalConfigFlags = io.ConfigFlags;
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Escape closes native combo popups.
 		Harness app(root);

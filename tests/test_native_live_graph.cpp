@@ -6,6 +6,7 @@
 #include "GkNativeLiveAuxiliaryClone.hpp"
 #include "GkNativeLiveCompositionRuntime.hpp"
 #include "GkNativeLiveAuxiliaryRuntime.hpp"
+#include "GkNativeLivePlacementRuntime.hpp"
 #include "GkNativeLiveGraphRuntime.hpp"
 #include <algorithm>
 using namespace NativeFixture;
@@ -73,6 +74,25 @@ namespace
         auto duplicate = Source(); duplicate->items.push_back(duplicate->items[3]);
         NativeLiveRuntime::TimelineClone duplicateClone;
         Check(Throws([&] { duplicateClone.Build(duplicate); }), "duplicate flattened source track rejected"); duplicateClone.Clear();
+        // Live packages: BPM-driven equipment clips, tempo map only in the master timeline.
+        auto master = New(Asset); auto tempo = Track(BpmTrack, master); tempo->name = "master-bpm"; master->items = {tempo};
+        auto equipmentOnly = New(Asset); equipmentOnly->items = {Track(EquipmentTrack, equipmentOnly, true)};
+        NativeLiveRuntime::TimelineClone external; external.Build(equipmentOnly, nullptr, tempo);
+        auto owned = O(external.asset.Get());
+        Check(external.equipmentTracks == 1 && external.bpmTracks == 1 && owned->items.size() == 2 && owned->items[0] != tempo &&
+            O(owned->items[0])->kind == BpmTrack && O(owned->items[0])->name == "master-bpm",
+            "external master tempo track is cloned first into the owned timeline");
+        Check(master->items == std::vector<void*>{tempo} && tempo->parent == master && O(tempo->items[0])->parent == tempo,
+            "master timeline and its BPM track and clip stay unchanged");
+        external.Clear();
+        auto self = Source(); NativeLiveRuntime::TimelineClone selfTempo;
+        Check(Throws([&] { selfTempo.Build(self, nullptr, self->items[0]); }), "a tempo track inside the equipment timeline is not cloned twice");
+        selfTempo.Clear();
+        auto other = New(Asset); auto notTempo = Track(OtherTrack, other);
+        auto plain = New(Asset); plain->items = {Track(EquipmentTrack, plain, true)};
+        NativeLiveRuntime::TimelineClone wrongTempo;
+        Check(Throws([&] { wrongTempo.Build(plain, nullptr, notTempo); }), "a non-BPM track is never accepted as tempo map");
+        wrongTempo.Clear();
     }
     GakuMotion::native_live::Request MakeRequest(int stage)
     {
@@ -137,7 +157,7 @@ namespace
         Object *receiverRoot, *receiver, *equipmentRoot, *director, *controller, *eqValue, *realLight, *lightAnchor;
         Object *environment, *envDirector, *envAnimator, *monitor, *monitorDirector, *monitorCamera, *video, *rt;
         Object *crowd, *crowdDirector, *crowdVolume, *master, *lightDirector, *actor, *cameraRoot, *audio, *audioSource, *particles;
-        Object *equipmentTimeline;
+        Object *equipmentTimeline, *masterDirector, *monitorTile;
     };
     LiveScene BuildLive(int scene)
     {
@@ -155,7 +175,9 @@ namespace
         s.envAnimator = Child("Mesh", s.environment); Add(s.envAnimator, Renderer);
         auto envTimeline = New(Asset); s.envDirector->asset = envTimeline;
         auto envAnim = AuxTrack(AnimTrack, envTimeline, AnimClip); s.envDirector->bindings[envAnim] = s.envAnimator;
-        auto infinite = AuxTrack(AnimTrack, envTimeline, AnimClip); infinite->clipMode = false; s.envDirector->bindings[infinite] = s.envAnimator;
+        // Infinite mode: one recorded clip and no TimelineClips.
+        auto infinite = AuxTrack(AnimTrack, envTimeline, AnimClip); infinite->items.clear(); infinite->clipMode = false;
+        s.envDirector->bindings[infinite] = s.envAnimator;
         s.monitor = RootGo("Monitor", scene); s.monitorDirector = Add(s.monitor, Director);
         s.rt = New(Texture);
         s.monitorCamera = Add(Child("RTCamera", s.monitor), CameraC); s.monitorCamera->asset = s.rt;
@@ -163,10 +185,16 @@ namespace
         Add(Child("Screen", s.monitor), MonitorC); s.video = Add(Child("Video", s.monitor), VideoC); s.video->mode = 2;
         auto monTimeline = New(Asset); s.monitorDirector->asset = monTimeline;
         auto videoTrack = AuxTrack(VideoTrack, monTimeline); s.monitorDirector->bindings[videoTrack] = s.video;
+        // Screen UV layer (all-012_Monitor): infinite-mode root track bound to a
+        // tile, with a clip-mode override child (img/col/scale/spd/offset).
+        s.monitorTile = Child("Q1", s.monitor);
+        auto uv = AuxTrack(AnimTrack, monTimeline, AnimClip); uv->items.clear(); uv->clipMode = false;
+        s.monitorDirector->bindings[uv] = s.monitorTile;
+        auto uvImage = AuxTrack(AnimTrack, monTimeline, AnimClip); uvImage->parent = uv; uv->children.push_back(uvImage);
         s.crowd = RootGo("Crowd", scene); s.crowdDirector = Add(s.crowd, Director); s.crowdVolume = Add(s.crowd, CrowdC);
         auto crowdTimeline = New(Asset); s.crowdDirector->asset = crowdTimeline;
         auto crowdTrack = AuxTrack(CrowdTrack, crowdTimeline); s.crowdDirector->bindings[crowdTrack] = s.crowdVolume;
-        s.master = RootGo("MasterTimeline", scene); Add(s.master, Director);
+        s.master = RootGo("MasterTimeline", scene); s.masterDirector = Add(s.master, Director);
         auto lightGo = Child("Light", s.master); s.lightDirector = Add(lightGo, Director);
         auto lightTimeline = New(Asset); s.lightDirector->asset = lightTimeline;
         auto anchorTrack = AuxTrack(LightTrack, lightTimeline); s.lightDirector->bindings[anchorTrack] = s.lightAnchor;
@@ -212,10 +240,16 @@ namespace
         Check(s.director->asset != s.equipmentTimeline && O(s.director->asset)->items.size() == 1,
             "source equipment director hosts only its rig animation; equipment tracks stay with the owned driver");
         Check(O(s.lightDirector->go)->parent == nullptr && O(s.lightDirector->go)->active, "bare child light director is lifted out of the hidden controller");
-        Check(graph.auxiliary.rigTracks == 2 && graph.auxiliary.environmentTracks == 2 && graph.auxiliary.monitorTracks == 1 &&
+        Check(graph.auxiliary.rigTracks == 2 && graph.auxiliary.environmentTracks == 3 && graph.auxiliary.monitorTracks == 3 &&
             graph.auxiliary.audienceTracks == 1, "admitted track counts per layer");
-        Check(graph.auxiliary.skippedTracks == 4, "infinite clip, unsupported, actor-control and camera-bound tracks are skipped");
-        Check(s.envDirector->asset != nullptr && O(s.envDirector->asset)->items.size() == 1, "private environment timeline holds only clip-mode animation");
+        Check(graph.auxiliary.skippedTracks == 3, "unsupported, actor-control and camera-bound tracks are skipped");
+        Check(s.envDirector->asset != nullptr && O(s.envDirector->asset)->items.size() == 2,
+            "private environment timeline holds clip-mode and infinite-mode animation");
+        auto monitorTimeline = O(s.monitorDirector->asset);
+        auto uvCopy = monitorTimeline->items.size() == 2 ? O(monitorTimeline->items[1]) : nullptr;
+        Check(uvCopy && uvCopy->kind == AnimTrack && !uvCopy->clipMode && uvCopy->items.empty() && uvCopy->children.size() == 1 &&
+            s.monitorDirector->bindings[uvCopy] == s.monitorTile,
+            "screen UV infinite-mode track keeps its override child and tile binding on the private monitor timeline");
         Check(s.monitorDirector->graph && s.crowdDirector->graph && s.envDirector->graph, "hosted source directors build graphs after activation");
         Check(captures == 1, "only the game's stage is snapshotted");
         calls.clear(); ++frame; graph.Sample(5);
@@ -271,10 +305,47 @@ namespace
         Check(hiddenReceiver.Stop(), "inactive-receiver failure remains releasable");
         frame_hooks::Release();
     }
+    // tln_live_all-001/012/019 layout: the equipment timeline has BPM-driven
+    // clips but no BPM track; the master timeline (director-control tracks)
+    // and sometimes the Light timeline carry one.
+    Object* MasterTempo(Object* director, const char* name)
+    {
+        auto timeline = New(Asset); director->asset = timeline;
+        auto bpm = Track(BpmTrack, timeline); bpm->name = name;
+        auto control = New(ControlTrack); control->parent = timeline;
+        timeline->items = {bpm, control};
+        return timeline;
+    }
+    void TestMasterTempo()
+    {
+        using namespace NativeLiveRuntime;
+        auto s = BuildLive(91);
+        s.equipmentTimeline->items.erase(s.equipmentTimeline->items.begin());
+        auto masterTimeline = MasterTempo(s.masterDirector, "master-bpm");
+        auto lightTimeline = O(s.lightDirector->asset);
+        auto lightBpm = Track(BpmTrack, lightTimeline); lightBpm->name = "light-bpm"; lightTimeline->items.push_back(lightBpm);
+        NativeGraph graph; graph.Build(MakeRequest(28), 91);
+        auto owned = O(graph.clone.asset.Get());
+        Check(graph.clone.bpmTracks == 1 && O(owned->items[0])->kind == BpmTrack && O(owned->items[0])->name == "master-bpm",
+            "equipment timeline without a BPM track uses the master timeline's tempo map");
+        Check(s.masterDirector->asset == masterTimeline && masterTimeline->items.size() == 2 && !s.masterDirector->graph,
+            "master timeline is only read; its director is never played or reassigned");
+        Check(graph.Stop(), "master-tempo composition releases");
+        frame_hooks::Release();
+        auto t = BuildLive(92);
+        t.equipmentTimeline->items.erase(t.equipmentTimeline->items.begin());
+        MasterTempo(t.masterDirector, "first"); MasterTempo(Add(t.master, Director), "second");
+        NativeGraph ambiguous;
+        Check(Throws([&] { ambiguous.Build(MakeRequest(29), 92); }), "two master tempo maps are ambiguous and fail closed");
+        Check(ambiguous.Stop(), "ambiguous tempo failure remains releasable");
+        frame_hooks::Release();
+    }
 }
+#include "test_native_live_placement.hpp"
 int main()
 {
-    InitializeMethods(); TestCloner(); TestPairedStageDriver(); TestSourceComposition(); TestLayerSwitches();
+    InitializeMethods(); TestCloner(); TestPairedStageDriver(); TestSourceComposition(); TestLayerSwitches(); TestMasterTempo();
+    TestStagePlacement(); TestPlacementRecovery(); TestPlacementGraph();
     std::printf("Native Live graph adapter: %d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }

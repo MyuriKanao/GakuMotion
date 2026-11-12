@@ -174,9 +174,46 @@ namespace
         }
     }
 }
+namespace
+{
+    // Production element copy used by reflection::Items for every managed array.
+    void TestArrayElements()
+    {
+        int a{}, b{}, c{};
+        void* storage[]{&a, &b, &c};
+        const auto items = ArrayElements(storage, 3);
+        Check(items.size() == 3 && items[0] == &a && items[1] == &b && items[2] == &c,
+            "managed array copy yields its elements, not the two range pointers");
+        Check(ArrayElements(storage, 1).size() == 1, "single-element managed array keeps one element");
+        Check(ArrayElements(storage, 0).empty(), "empty managed array yields no elements");
+    }
+    void TestTempoSource()
+    {
+        Check(TempoSource(1, {{1, true}}) == -1, "equipment timeline's own BPM track is kept");
+        Check(TempoSource(0, {{0, false}, {1, true}, {1, false}}) == 1, "master timeline tempo is preferred over another timeline's");
+        Check(TempoSource(0, {{0, true}, {1, false}}) == 1, "a single other BPM timeline is used when no master has one");
+        Check(TempoSource(0, {{1, true}, {1, true}}) == -1, "two master tempo maps are ambiguous");
+        Check(TempoSource(0, {{2, true}}) == -1, "a master with two BPM tracks is ambiguous");
+        Check(TempoSource(0, {{1, false}, {1, false}}) == -1, "two non-master tempo maps are ambiguous");
+        Check(TempoSource(0, {}) == -1, "no tempo map anywhere yields none");
+    }
+    void TestSceneNameFromPath()
+    {
+        Check(SceneNameFromPath("tln_live_all-012") == "tln_live_all-012",
+            "bare bundle scene path (this client's Live bundles) is its own scene name");
+        Check(SceneNameFromPath("Assets/Live/tln_live_all-012.unity") == "tln_live_all-012",
+            "standard scene path drops directory and .unity suffix");
+        Check(SceneNameFromPath("Assets\\Live\\Stage.UNITY") == "Stage", "suffix match is case-insensitive");
+        Check(!SceneNameFromPath("") && !SceneNameFromPath(".unity") && !SceneNameFromPath("Assets/"),
+            "empty scene names are rejected");
+        Check(!SceneNameFromPath(std::string_view("bad\0name", 8)), "embedded NUL is rejected");
+    }
+}
+#include "test_native_live_recovery.hpp"
 int main()
 {
-    TestCatalog(); TestSession(); TestSettings(); TestLayerSettings(); TestLayerSessionIdentity();
+    TestArrayElements(); TestSceneNameFromPath(); TestTempoSource(); TestCatalog(); TestSession(); TestSettings(); TestLayerSettings(); TestLayerSessionIdentity();
+    TestActorReplacementRecovery(); TestOriginCandidateVisibility();
     std::printf("Native Live synthetic contracts: %d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }

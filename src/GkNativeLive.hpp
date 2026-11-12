@@ -18,6 +18,7 @@
 namespace GakuMotion::native_live
 {
     inline constexpr size_t kMaxBundleNameLength = 4096, kMaxTitleBytes = 512;
+    inline constexpr const char* kStageOriginRoot = "GakuMotion.LiveOrigin";
     struct Song
     {
         std::string key, title, stage, timeline;
@@ -47,6 +48,46 @@ namespace GakuMotion::native_live
         for (const auto& name : {std::string(raw), std::string(prefix) + std::string(raw)})
             if (ResourceName(name, prefix) && available.contains(name)) matches.insert(name);
         return matches.size() == 1 ? std::optional(*matches.begin()) : std::nullopt;
+    }
+    // Copies a managed reference array's element range. Parentheses are
+    // required: braces select vector's initializer_list constructor and yield
+    // the two range pointers themselves as the only elements.
+    inline std::vector<void*> ArrayElements(void* const* first, size_t count)
+    { return std::vector<void*>(first, first + count); }
+    // Scene name Unity assigns to a bundle scene path: last path segment
+    // without an optional ".unity" suffix. This client's Live bundles declare
+    // bare names (the container key is "tln_live_all-012"), while standard
+    // builds use "Assets/.../Name.unity"; both forms are accepted.
+    inline std::optional<std::string> SceneNameFromPath(std::string_view path)
+    {
+        if (path.empty() || path.size() > 1024 || path.find('\0') != std::string_view::npos) return std::nullopt;
+        const auto slash = path.find_last_of("/\\");
+        auto name = slash == std::string_view::npos ? path : path.substr(slash + 1);
+        constexpr std::string_view suffix = ".unity";
+        if (name.size() >= suffix.size() && std::equal(suffix.begin(), suffix.end(), name.end() - suffix.size(),
+            [](char a, char b) { return a == (b >= 'A' && b <= 'Z' ? b - 'A' + 'a' : b); }))
+            name.remove_suffix(suffix.size());
+        if (name.empty()) return std::nullopt;
+        return std::string(name);
+    }
+    // Tempo map for BPM-driven equipment clips. Older Lives keep the
+    // CampusBpmTimelineTrack beside the equipment tracks; Live packages keep
+    // it only in the master timeline (the one with director-control tracks).
+    // Returns the index of the other timeline whose single unmuted BPM track
+    // is cloned, or -1 when the equipment timeline has its own or no unique
+    // source exists (a clone that needs a tempo map then fails closed).
+    struct TempoCandidate { size_t bpmTracks{}; bool master{}; };
+    inline int TempoSource(size_t ownBpmTracks, const std::vector<TempoCandidate>& others)
+    {
+        if (ownBpmTracks) return -1;
+        int master = -1, single = -1, masters = 0, singles = 0;
+        for (int i = 0; i < static_cast<int>(others.size()); ++i)
+        {
+            if (!others[static_cast<size_t>(i)].bpmTracks) continue;
+            if (others[static_cast<size_t>(i)].master) { ++masters; master = i; } else { ++singles; single = i; }
+        }
+        if (masters) return masters == 1 && others[static_cast<size_t>(master)].bpmTracks == 1 ? master : -1;
+        return singles == 1 && others[static_cast<size_t>(single)].bpmTracks == 1 ? single : -1;
     }
     inline double SampleTime(double time, double offset, double duration)
     {

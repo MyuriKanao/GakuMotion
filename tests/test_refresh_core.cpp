@@ -2410,6 +2410,44 @@ static void TestInitialPosition()
 	fs::remove_all(root);
 }
 
+static void TestLiveLightingPreferenceOutsidePhotography()
+{
+	BeginTest("live_lighting_preference_outside_photography");
+	namespace fs = std::filesystem;
+	const auto root = fs::temp_directory_path() / "gkmotion_live_lighting_preference";
+	fs::remove_all(root);
+	fs::create_directories(root);
+	Core core;
+	core.configRoot = root.string();
+	core.enforceInjectionPolicy = true; // unknown scene: injection denied
+	stage_light::Settings lighting;
+	lighting.mode = stage_light::Mode::SongTimeline;
+	lighting.songKey = "music-synthetic@1";
+	StageSettings visual = core.stageManager.settings;
+	visual.liveLighting = lighting;
+	core.QueueStageSettings(visual);
+	core.ProcessPendingGuiCommands();
+	Check(core.stageManager.settings.liveLighting.mode == stage_light::Mode::Native,
+	      "full stage settings are still dropped while injection is denied");
+	core.QueueLiveLightingPreference(lighting);
+	core.ProcessPendingStageLoadCommands();
+	Check(core.stageManager.settings.liveLighting.mode == stage_light::Mode::SongTimeline &&
+	      core.stageManager.settings.liveLighting.songKey == "music-synthetic@1",
+	      "lighting preference applies on the host tick without injection");
+	stage_load::Settings saved;
+	std::string error;
+	Check(saved.Load((root / "stage.json").string(), error) &&
+	      saved.lighting.mode == stage_light::Mode::SongTimeline &&
+	      saved.lighting.songKey == "music-synthetic@1",
+	      "lighting preference is saved before the next Photography load");
+	lighting.songKey = "music-synthetic@2";
+	core.QueueLiveLightingPreference(lighting);
+	core.ProcessPendingGuiCommands();
+	Check(core.stageManager.settings.liveLighting.songKey == "music-synthetic@2",
+	      "actor-tick processing also accepts the preference while denied");
+	fs::remove_all(root);
+}
+
 static void TestOrderedPlaybackCommands()
 {
 	BeginTest("ordered_playback_commands");
@@ -2548,6 +2586,7 @@ int main(int argc, char** argv)
  TestSecondaryPhysicsConfig();
  TestOrderedPlaybackCommands();
  TestInitialPosition();
+ TestLiveLightingPreferenceOutsidePhotography();
  TestOverrideInjection();
  TestPlayerSeekSync();
  TestPlaybackSpeedAndClock();

@@ -62,6 +62,8 @@ namespace NativeLiveRuntime
         inline void* managedStringClass=stringClass;
         inline int32_t (*stringLength)(void*)=[](void* p) {return static_cast<ManagedString*>(p)->length;};
         inline const char16_t* (*stringChars)(void*)=[](void* p)->const char16_t* {return static_cast<ManagedString*>(p)->chars;};
+        inline const char* (*className)(void*)=[](void*)->const char* {return "SyntheticObject";};
+        inline const char* (*classNamespace)(void*)=[](void*)->const char* {return "Fixture";};
 #include "GkNativeLiveTextRuntime.hpp"
         struct Arena { void* Keep(void* value) { return value; } };
         inline void* objectNew(void*) { return nullptr; }
@@ -155,6 +157,16 @@ int main()
     Check(!GakuMotion::native_live::catalog.Find("music-catalog-bad@4"),"overlong resource field skips only its own row");
     deps.items={MakeText(longDependency)};RequireCached("tln_live_fixture");
     Check(checkedNames==2,"local cache check accepts the same long dependency retained by reader");
+    deps.items={MakeText(longDependency),&wrong};
+    try { RequireCached("tln_live_fixture"); Check(false,"non-string dependency entry fails closed"); }
+    catch (const std::exception& problem)
+    { const std::string text=problem.what();
+      Check(text.find("dependency name is not a readable string (1/2, first: Fixture.SyntheticObject)")!=std::string::npos,
+        "non-string dependency entry fails closed and names the count and actual class"); }
+    try { r::Text(&wrong); Check(false,"strict text rejects a non-string"); }
+    catch (const std::exception& problem)
+    { Check(std::string(problem.what()).find("Fixture.SyntheticObject")!=std::string::npos,"strict text names the actual class"); }
+    deps.items={MakeText(longDependency)};
     bytesToDownload=1;Check(Throws([]{RequireCached("tln_live_fixture");}),"uncached dependency still fails closed");bytesToDownload=0;
     failCatalog=true;GakuMotion::native_live::refreshRequested.store(true);catalogAttempted=true;PollCatalog();
     Check(GakuMotion::native_live::catalog.Snapshot()==snapshot,"failed refresh preserves prior valid catalog");

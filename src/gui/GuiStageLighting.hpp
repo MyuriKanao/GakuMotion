@@ -43,6 +43,26 @@ namespace GakuMotion
         return changed;
     }
 
+    // Shown on the disabled panel (outside Photography). The template decides
+    // which stage the next Photography load uses, so choosing it must not wait
+    // for an active scene. Only the preference is saved here.
+    inline void DrawLiveLightingPreference(const GuiContext& ctx)
+    {
+        if (!ImGui::CollapsingHeader("Live 舞台灯光（下次进入偶像摄影时生效）")) return;
+        ImGui::PushID("live_lighting_preference");
+        const char* modes[]{"原生（不接管）", "固定染色", "柔和呼吸", "青紫 / 彩色渐变", "原生模板 · 跟随曲库节拍", "通用灯光 · 跟随曲库节拍"};
+        auto lighting = stage_light::Sanitize(ctx.stageSettings.liveLighting);
+        bool changed = false;
+        int mode = static_cast<int>(lighting.mode);
+        ImGui::BeginDisabled(!ctx.fnSetLiveLightingPreference);
+        if (ImGui::Combo("灯光效果", &mode, modes, 6)) { lighting.mode = static_cast<stage_light::Mode>(mode); changed = true; }
+        if (lighting.mode == stage_light::Mode::SongTimeline) changed |= DrawNativeLiveSong(lighting, ctx);
+        ImGui::EndDisabled();
+        if (changed && ctx.fnSetLiveLightingPreference) ctx.fnSetLiveLightingPreference(ctx.self, lighting);
+        ImGui::TextWrapped("这里的选择立即保存，不改动当前画面。选好原生模板后进入偶像摄影，会直接载入它的配套舞台，无需再切换一次。颜色与强度请在偶像摄影内的舞台页调整。");
+        ImGui::PopID();
+    }
+
     inline bool DrawStageLightingControl(StageSettings& settings, const GuiContext& ctx)
     {
         bool changed = false;

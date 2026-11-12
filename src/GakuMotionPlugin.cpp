@@ -2355,7 +2355,12 @@ static bool RefreshSceneActors(GakuMotion::Core& core, bool force = false)
 		void* current = observations.empty() ? nullptr : observations.front().actor;
 		if (current) StageLoader::BindContext(g_sceneOwner.sceneHandle, current);
 		if (!core.stageManager.OnActorSetChanged(current))
-			ProtectedCaptureFault("stage restoration failed during actor replacement");
+		{
+			// Actor replacement is not a capture transaction. A pending native
+			// scene unload keeps stage injection suspended and retries next tick;
+			// it must not permanently revoke the installed capture hooks.
+			GakuMotion::host::Info("[GakuMotion][Stage] actor replacement: restoration pending; stage injection suspended");
+		}
 	}
 	return true;
 }
