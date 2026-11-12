@@ -72,6 +72,18 @@ void TestNativeLiveGui(const std::filesystem::path& root)
     stage_load::Settings loaded; std::string error;
     Check(loaded.Load(MotionPathToUtf8(app.fixture / "stage.json"), error) && loaded.key == fixed &&
         loaded.lighting.songKey == "music-gui-fixture@1", "native preference persists without overwriting saved fixed stage");
+    for (const char* label : {"原生环境渲染", "舞台大屏", "观众与荧光棒"})
+    {
+        const auto* layer = app.ItemWithLabel(label);
+        Check(layer && !(layer->flags & ImGuiItemFlags_Disabled) && (layer->status & ImGuiItemStatusFlags_Checked),
+            "native template exposes each enabled layer as an independent real checkbox");
+        app.Click(label); app.Settle();
+    }
+    const auto& layers = app.core.stageManager.settings.liveLighting;
+    Check(!layers.environment && !layers.monitor && !layers.audience,
+        "native layer checkboxes reach the Core settings consumer");
+    Check(loaded.Load(MotionPathToUtf8(app.fixture / "stage.json"), error) && loaded.lighting == layers && loaded.key == fixed,
+        "native layer choices persist without changing the fixed stage preference");
     app.Click("原生灯光模板"); app.Settle();
     app.Click("Synthetic Other / 演出版本 2##music-gui-other@2"); app.Settle();
     Check(app.core.stageManager.GetLoadReplacementKey() == "env_3d_gui_other", "another song switches to another paired stage, not Agitato hardware");
@@ -90,6 +102,8 @@ void TestNativeLiveGui(const std::filesystem::path& root)
     app.Click("灯光效果");app.Settle();app.Click("通用灯光 · 跟随曲库节拍");app.Settle();
     Check(app.core.stageManager.settings.liveLighting.mode==stage_light::Mode::AutoBeat && !app.ItemWithLabel("原生灯光模板"),
         "universal automatic lighting is available without any native-song template selector");
+    Check(!app.ItemWithLabel("原生环境渲染") && !app.ItemWithLabel("舞台大屏") && !app.ItemWithLabel("观众与荧光棒"),
+        "native composition layers are not advertised as procedural-mode capabilities");
     const auto* automaticBpm=app.ItemWithLabel("灯光 BPM");
     Check(automaticBpm && (automaticBpm->flags & ImGuiItemFlags_Disabled),"automatic mode does not use the global manual BPM slider");
 }

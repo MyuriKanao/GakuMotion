@@ -4,10 +4,15 @@
 #include "GkNativeLiveReflection.hpp"
 #include "GkNativeLiveBindings.hpp"
 #include "GkNativeLiveCatalogRuntime.hpp"
+#include "GkNativeLiveMediaGate.hpp"
 #include "GkNativeLiveSceneRuntime.hpp"
 #include "GkNativeLiveSnapshotRuntime.hpp"
 #include "GkNativeLiveClonerRuntime.hpp"
 #include "GkNativeLiveHooksRuntime.hpp"
+#include "GkNativeLiveAuxiliaryBindings.hpp"
+#include "GkNativeLiveAuxiliaryClone.hpp"
+#include "GkNativeLiveCompositionRuntime.hpp"
+#include "GkNativeLiveAuxiliaryRuntime.hpp"
 #include "GkNativeLiveGraphRuntime.hpp"
 #include "GkNativeLiveTempoRuntime.hpp"
 namespace NativeLiveRuntime
@@ -29,7 +34,8 @@ namespace NativeLiveRuntime
         if (!song || SceneOwnerRuntime::cachedActiveScene != song->stage || !g_verifiedActiveSceneHandle ||
             GakuMotion::stage_load::receipt.Context(song->stage, g_verifiedOwnerSceneName, g_sceneOwner) !=
                 GakuMotion::injection::Context::Photography) return {};
-        return live::Request{*song, g_sceneOwner, g_verifiedActiveSceneHandle};
+        return live::Request{*song, g_sceneOwner, g_verifiedActiveSceneHandle,
+            settings.environment, settings.monitor, settings.audience};
     }
     inline bool Begin(const live::Request& request)
     {
@@ -52,7 +58,7 @@ namespace NativeLiveRuntime
             { if (result == live::Operation::Failed) error = "native source load faulted or canceled"; return result; }
             if (!engine->built)
             {
-                engine->graph.Build(engine->request, engine->source.scene);
+                engine->graph.Build(engine->request, engine->source.scene, engine->source.originalRootStates);
                 BuildTemplateBeats(engine->graph,engine->beats);engine->built = true; error.clear();
             }
             return live::Operation::Ready;
@@ -97,9 +103,20 @@ namespace NativeLiveRuntime
         if (session.phase == live::Phase::Releasing) return "原生灯光：正在恢复舞台并释放自有时间轴场景";
         if (session.phase == live::Phase::Loading) return "原生灯光：正在读取本地歌曲时间轴";
         if (engine && session.phase == live::Phase::Ready)
-            return "曲库节拍驱动："+core.loadedMotionKey+"；原生模板：" + engine->request.song.title + "；设备轨 " +
-                std::to_string(engine->graph.clone.equipmentTracks) + " / BPM 轨 " +
-                std::to_string(engine->graph.clone.bpmTracks) + "（外部动作与镜头不接管；画面待验收）";
+        {
+            const auto& g = engine->graph; const auto& a = g.auxiliary; const auto& c = g.composition;
+            auto layer = [](bool enabled, int roots, int tracks) {
+                return enabled ? std::to_string(roots) + " 组 / " + std::to_string(tracks) + " 轨" : std::string("关闭"); };
+            return "曲库节拍驱动："+core.loadedMotionKey+"；原生模板：" + engine->request.song.title +
+                "；灯架来源：" + (g.sourceReceiver ? "演出包" : "配套舞台") +
+                "；设备轨 " + std::to_string(g.clone.equipmentTracks) + " / BPM 轨 " + std::to_string(g.clone.bpmTracks) +
+                " / 灯光锚点等 " + std::to_string(a.rigTracks) +
+                "；环境 " + layer(engine->request.environment, c.environmentRoots, a.environmentTracks) +
+                "；大屏 " + layer(engine->request.monitor, c.monitorRoots, a.monitorTracks) +
+                "；观众 " + layer(engine->request.audience, c.audienceRoots, a.audienceTracks) +
+                (c.result.excluded ? "；含演员/镜头/音频/叠加层/未同步粒子的组 " + std::to_string(c.result.excluded) + " 个保持隐藏" : "") +
+                "（外部动作与镜头不接管；画面待验收）";
+        }
         if (settings.songKey.empty()) return "自动匹配当前舞台的原生灯光模板；无模板时可选择通用节拍灯光（不伪装为原生编排）";
         if (!live::catalog.Find(settings.songKey)) return "原生灯光模板目录待就绪；播放曲目仍由曲库选择";
         return "原生模板待机：请重新进入摄影载入模板配套舞台；灯光将按曲库当前曲目的拍数重定时";
@@ -153,6 +170,6 @@ namespace NativeLiveRuntime
         // Keep handles if asynchronous Unity cleanup is still pending. Do not
         // perform off-thread Unity calls or unload another scene as a shortcut.
         if (!clean) GakuMotion::host::Warn("[GakuMotion][NativeLive] shutdown cleanup pending: %s", error.c_str());
-        if (clean) frame_hooks::Release();
+        if (clean) { frame_hooks::Release(); media_gate::Release(); }
     }
 }

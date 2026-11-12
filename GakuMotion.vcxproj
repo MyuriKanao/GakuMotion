@@ -273,6 +273,13 @@
     <ClInclude Include="src\GkNativeLiveSnapshotRuntime.hpp" />
     <ClInclude Include="src\GkNativeLiveTaskRuntime.hpp" />
     <ClInclude Include="src\GkNativeLiveTextRuntime.hpp" />
+    <ClInclude Include="src\GkNativeLiveAuxiliaryBindings.hpp" />
+    <ClInclude Include="src\GkNativeLiveAuxiliaryClone.hpp" />
+    <ClInclude Include="src\GkNativeLiveAuxiliaryRuntime.hpp" />
+    <ClInclude Include="src\GkNativeLiveComposition.hpp" />
+    <ClInclude Include="src\GkNativeLiveCompositionRuntime.hpp" />
+    <ClInclude Include="src\GkNativeLiveMediaGate.hpp" />
+    <ClInclude Include="src\GkNativeLiveMediaPolicy.hpp" />
     <ClInclude Include="src\gui\GuiNativeLive.hpp" />
     <ClInclude Include="src\GkStageCatalog.hpp" />
     <ClInclude Include="src\GkStageLighting.hpp" />
