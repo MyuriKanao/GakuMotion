@@ -18,6 +18,7 @@ namespace GakuMotion::stage_light
         float strength{1.0f}, bpm{120.0f}, speed{1.0f};
         std::string songKey;
         float nativeOffset{0.0f};
+        bool environment{true}, monitor{true}, audience{true};
         bool operator==(const Settings&) const = default;
     };
 

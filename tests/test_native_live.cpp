@@ -112,10 +112,71 @@ namespace
         Check(!saved.Save(path, error) && loaded.Load(path, error) && loaded.lighting == settings, "invalid offset preserves prior bytes");
         std::filesystem::remove(dir / "stage.json"); std::filesystem::remove(dir);
     }
+    void TestLayerSettings()
+    {
+        const stage_light::Settings defaults;
+        Check(defaults.environment && defaults.monitor && defaults.audience, "native layers default to enabled");
+        const auto dir = std::filesystem::temp_directory_path() /
+            ("gk-native-layers-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        std::filesystem::create_directory(dir);
+        const auto file = dir / "stage.json";
+        const auto path = MotionPathToUtf8(file);
+        stage_load::Settings saved, loaded;
+        saved.lighting.mode = stage_light::Mode::SongTimeline;
+        std::string error;
+        for (int mask = 0; mask < 8; ++mask)
+        {
+            saved.lighting.environment = (mask & 1) != 0;
+            saved.lighting.monitor = (mask & 2) != 0;
+            saved.lighting.audience = (mask & 4) != 0;
+            Check(saved.Save(path, error) && loaded.Load(path, error) && loaded.lighting == saved.lighting,
+                "each independent native layer combination round-trips in version-1 settings");
+        }
+        const auto write = [&](const std::string& extra) {
+            std::ofstream out(file);
+            out << "{\"version\":1,\"load_replacement_key\":\"\",\"live_lighting\":{"
+                "\"mode\":4,\"palette\":0,\"strength\":1,\"bpm\":120,\"speed\":1" << extra << "}}";
+        };
+        write("");
+        Check(loaded.Load(path, error) && loaded.lighting.environment && loaded.lighting.monitor && loaded.lighting.audience,
+            "older live_lighting objects default missing layer options to enabled");
+        write(",\"monitor\":false");
+        Check(loaded.Load(path, error) && !loaded.lighting.monitor && loaded.lighting.environment && loaded.lighting.audience,
+            "partial optional layer configuration preserves other defaults");
+        const auto stable = loaded.lighting;
+        for (const char* name : {"environment", "monitor", "audience"})
+            for (const char* value : {"0", "\"true\"", "null", "[]"})
+            {
+                write(std::string(",\"") + name + "\":" + value);
+                Check(!loaded.Load(path, error) && loaded.lighting == stable,
+                    "invalid native layer type is rejected without partially changing desired settings");
+            }
+        std::filesystem::remove(file); std::filesystem::remove(dir / "stage.json.bak"); std::filesystem::remove(dir);
+    }
+    void TestLayerSessionIdentity()
+    {
+        for (auto member : {&Request::environment, &Request::monitor, &Request::audience})
+        {
+            auto session = MakeSession(); result = Operation::Ready;
+            auto current = Fixture(), desired = current;
+            Check(session.Update(current, 1) && begins == 1, "native layer fixture starts one owned session");
+            desired.*member = false;
+            Check(!current.Same(desired), "each layer choice participates in native session identity");
+            releaseOk = false;
+            Check(!session.Update(desired, 2) && session.Held() && begins == 1 && samples == 1,
+                "changing a layer waits for prior scene cleanup before evaluating or loading another composition");
+            releaseOk = true;
+            Check(!session.Update(desired, 3) && !session.Held() && begins == 1,
+                "layer transition fully releases the old session before rebuilding");
+            Check(session.Update(desired, 4) && begins == 2 && sampled == 4,
+                "layer transition rebuilds at the latest absolute time after cleanup");
+            Check(session.Update(desired, 5) && begins == 2, "unchanged native layer choices do not reload every frame");
+        }
+    }
 }
 int main()
 {
-    TestCatalog(); TestSession(); TestSettings();
+    TestCatalog(); TestSession(); TestSettings(); TestLayerSettings(); TestLayerSessionIdentity();
     std::printf("Native Live synthetic contracts: %d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }

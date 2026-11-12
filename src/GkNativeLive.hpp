@@ -1,6 +1,8 @@
 #pragma once
 #include "GkInjectionPolicy.hpp"
 #include "GkTempo.hpp"
+#include "GkNativeLiveComposition.hpp"
+#include "GkNativeLiveMediaPolicy.hpp"
 #include <algorithm>
 #include <cmath>
 #include <mutex>
@@ -100,8 +102,10 @@ namespace GakuMotion::native_live
         Song song;
         injection::OwnerSnapshot owner;
         int stageScene{};
+        bool environment{true}, monitor{true}, audience{true};
         bool Same(const Request& other) const
-        { return song == other.song && stageScene == other.stageScene && owner.SameOwner(other.owner); }
+        { return song == other.song && stageScene == other.stageScene && owner.SameOwner(other.owner) &&
+            environment == other.environment && monitor == other.monitor && audience == other.audience; }
         bool Valid() const { return stageScene && owner.AllowedContext() == injection::Context::Photography; }
     };
     enum class Operation { Pending, Ready, Failed };

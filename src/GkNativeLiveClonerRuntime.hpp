@@ -49,7 +49,8 @@ namespace NativeLiveRuntime
             if (!r::Read<bool>(mutedHierarchy, source)) equipment ? ++equipmentTracks : ++bpmTracks;
             return copy;
         }
-        void Build(void* source)
+        // pairs: optional action-scoped (original, copy) list for binding copy.
+        void Build(void* source, std::vector<std::pair<void*, void*>>* pairs = nullptr)
         {
             r::Require(!asset && r::Is(source, timelineClass), "source is not an unused native timeline");
             r::Arena roots;
@@ -75,6 +76,7 @@ namespace NativeLiveRuntime
                 if (parent && copies.contains(parent)) r::Call(addChild, copies.at(parent), addArgs);
                 else r::Call(addTrack, asset.Get(), addArgs);
             }
+            if (pairs) pairs->assign(copies.begin(), copies.end());
             copies.clear(); // No raw managed instances survive this action.
         }
         bool Clear()

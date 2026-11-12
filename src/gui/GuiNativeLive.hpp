@@ -32,6 +32,10 @@ namespace GakuMotion
             ImGui::EndCombo();
         }
         changed |= ImGui::SliderFloat("灯光拍点偏移", &lighting.nativeOffset, -10.0f, 10.0f, "%.2f s");
+        changed |= ImGui::Checkbox("原生环境渲染", &lighting.environment);
+        changed |= ImGui::Checkbox("舞台大屏", &lighting.monitor);
+        changed |= ImGui::Checkbox("观众与荧光棒", &lighting.audience);
+        ImGui::TextWrapped("分层选择仅作用于原生模板；修改后重建自有舞台会话。环境渲染包含演出包的后期 Volume、网格与贴花，大屏包含屏幕相机与内嵌视频，观众包含群众与荧光棒。演员、镜头、音频、CRI 背景视频及独立粒子特效不接管；不自动补下载缺失视频。实际状态以运行提示为准。");
         if (ImGui::Button("刷新原生模板")) native_live::refreshRequested.store(true);
         ImGui::SameLine();
         if (ImGui::Button("重试原生灯光")) native_live::retryRequested.store(true);

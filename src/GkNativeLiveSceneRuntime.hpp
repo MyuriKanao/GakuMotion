@@ -32,6 +32,7 @@ namespace NativeLiveRuntime
         Task task;
         Step step{Step::Empty};
         std::set<int> beforeScenes;
+        std::map<int, bool> originalRootStates;
         std::string bundle, path, sceneName;
         int scene{}, ownerScene{}, stageScene{};
         bool canceled{}, unloadSceneStarted{}, unloadBundleStarted{}, tokenReady{};
@@ -123,7 +124,13 @@ namespace NativeLiveRuntime
             void* nameArgs[]{&scene};
             r::Require(r::Text(roots.Keep(r::Call(StageLoader::sceneName, nullptr, nameArgs)), 1024) == sceneName, "owned source scene name mismatch");
             // No source actor/camera/audio track is played by this plugin.
-            for (void* go : objects) r::Set(StageLoader::setActive, go, false);
+            for (void* go : objects)
+            {
+                const int id = r::Read<int>(StageLoader::instanceId, go);
+                if (!originalRootStates.contains(id))
+                    originalRootStates.emplace(id, r::Read<bool>(StageLoader::activeSelf, go));
+                r::Set(StageLoader::setActive, go, false);
+            }
         }
         GakuMotion::native_live::Operation Poll()
         {
@@ -133,6 +140,7 @@ namespace NativeLiveRuntime
             if (step == Step::Bundle)
             {
                 SelectScenePath(); r::Arena roots; void* text = r::String(sceneName, roots);
+                media_gate::Arm(sceneName, beforeScenes);
                 step = Step::Scene; InvokeTask(sceneLoad, text); return Operation::Pending;
             }
             if (step == Step::Scene) { Isolate(); step = Step::Ready; }
@@ -184,6 +192,7 @@ namespace NativeLiveRuntime
             }
             if (cancellation && tokenReady) r::Call(ctsDispose, cancellation.Get());
             cancellation.Reset(); loader.Reset(); Destroy(helper);
+            media_gate::Disarm();
             step = Step::Done;
             return true;
         }

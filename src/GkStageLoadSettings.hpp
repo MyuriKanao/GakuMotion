@@ -63,6 +63,15 @@ namespace GakuMotion::stage_load
                     { error = "Invalid native live timeline offset"; return false; }
                     loadedLighting.nativeOffset = offset->AsFloat(0);
                 }
+                const std::pair<const char*, bool*> layers[]{
+                    {"environment", &loadedLighting.environment}, {"monitor", &loadedLighting.monitor},
+                    {"audience", &loadedLighting.audience}};
+                for (const auto& [name, enabled] : layers)
+                    if (const auto* value = saved->Find(name))
+                    {
+                        if (!value->IsBool()) { error = "Invalid native live layer setting"; return false; }
+                        *enabled = value->boolValue;
+                    }
                 if (stage_light::Sanitize(loadedLighting) != loadedLighting)
                 { error = "Live lighting settings out of range"; return false; }
             }
@@ -85,7 +94,10 @@ namespace GakuMotion::stage_load
                 "\",\n  \"live_lighting\": {\"mode\": " + std::to_string(static_cast<int>(lighting.mode)) +
                 ", \"palette\": " + std::to_string(lighting.palette) + ", \"strength\": " + std::to_string(lighting.strength) +
                 ", \"bpm\": " + std::to_string(lighting.bpm) + ", \"speed\": " + std::to_string(lighting.speed) +
-                ", \"song_key\": \"" + lighting.songKey + "\", \"native_offset\": " + std::to_string(lighting.nativeOffset) + "}\n}\n";
+                ", \"song_key\": \"" + lighting.songKey + "\", \"native_offset\": " + std::to_string(lighting.nativeOffset) +
+                ", \"environment\": " + (lighting.environment ? "true" : "false") +
+                ", \"monitor\": " + (lighting.monitor ? "true" : "false") +
+                ", \"audience\": " + (lighting.audience ? "true" : "false") + "}\n}\n";
             static std::atomic<uint64_t> sequence{0};
             std::filesystem::path temp = destination;
             temp += "." + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "." +
