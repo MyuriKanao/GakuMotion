@@ -124,6 +124,37 @@ namespace GakuMotion
 		}
 		ImGui::TextWrapped("修改立即作用于当前驱动对象，切歌保留，停止后恢复场景原位；保存后作为下次启动的默认偏移。");
 
+		// Facing: the photo background sets the native facing, which may not
+		// match the camera. This turns the driven dancer around world up.
+		ImGui::Spacing();
+		ImGui::TextUnformatted("角色朝向（绕竖直轴，度）");
+		if (!overlay.initialYawEditing) overlay.initialYawEdit = controller.initialYawDegrees;
+		auto setYaw = [&](float degrees)
+		{
+			overlay.initialYawEdit = IdolController::NormalizeYaw(degrees);
+			if (ctx.fnSetInitialYaw) ctx.fnSetInitialYaw(ctx.self, overlay.initialYawEdit);
+			else controller.SetInitialYaw(overlay.initialYawEdit);
+		};
+		ImGui::SetNextItemWidth((std::max)(120.0f, ImGui::GetContentRegionAvail().x - 8.0f));
+		if (ImGui::SliderFloat("##initial_yaw", &overlay.initialYawEdit, -180.0f, 180.0f, "朝向: %.0f°"))
+		{
+			overlay.initialYawEditing = true;
+			setYaw(overlay.initialYawEdit);
+		}
+		if (ImGui::IsItemDeactivated()) overlay.initialYawEditing = false;
+		if (ImGui::Button("左转 90°", ImVec2(80, 24))) setYaw(controller.initialYawDegrees - 90.0f);
+		ImGui::SameLine();
+		if (ImGui::Button("右转 90°", ImVec2(80, 24))) setYaw(controller.initialYawDegrees + 90.0f);
+		ImGui::SameLine();
+		if (ImGui::Button("转身 180°", ImVec2(84, 24))) setYaw(controller.initialYawDegrees + 180.0f);
+		GuiIcons::SameLineIfRoom("重置朝向", ImVec2(84, 24));
+		if (GuiIcons::Button("重置朝向", GuiIcons::Icon::Reset, ImVec2(84, 24))) setYaw(0.0f);
+		ImGui::BeginDisabled(!ctx.fnFaceCamera);
+		if (ImGui::Button("让角色面向镜头", ImVec2(150, 24)) && ctx.fnFaceCamera) ctx.fnFaceCamera(ctx.self);
+		ImGui::EndDisabled();
+		if (!ctx.facingNotice.empty()) ImGui::TextWrapped("%s", ctx.facingNotice.c_str());
+		ImGui::TextWrapped("“让角色面向镜头”按当前游戏镜头位置水平转动角色，使其正面朝向镜头；GakuMotion 镜头（VMD/跟随/注视）会随角色朝向重新对齐。朝向和位置偏移一起用“保存初始位置为默认”保存，停止后恢复场景原朝向。");
+
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();

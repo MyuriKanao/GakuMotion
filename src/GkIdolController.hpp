@@ -2123,6 +2123,11 @@ namespace GakuMotion
 				curActorPos = Vector3(aPos[0], aPos[1], aPos[2]);
 				curActorRot = Quaternion(aRot[0], aRot[1], aRot[2], aRot[3]);
 			}
+			// The user's facing correction turns the whole driven frame around the
+			// actor pivot. Every world-space target below is built from curActorRot,
+			// so one left-multiplied yaw rotates hips path, body and arm solvers alike.
+			const Quaternion facing = InitialYawRotation();
+			curActorRot = (facing * curActorRot).Normalized();
 
 			// Anchor supported v2+ clips to the actor pivot using one clip-wide
 			// FK floor offset. Bind-time hips height never enters that path.
@@ -2416,6 +2421,22 @@ namespace GakuMotion
 					const int parentHid = (i > 0 && i < clip.bone_parent_hids.size())
 						                      ? clip.bone_parent_hids[i]
 						                      : -1;
+					// Facing correction for the gkclip local write: hips is the only
+					// bone whose local is relative to the actor-owned parent, so a
+					// world yaw becomes P^-1 * yaw * P there. Children inherit it.
+					if (hid == 0 && initialYawDegrees != 0.0f)
+					{
+						Quaternion parentRotation = Quaternion::Identity();
+						if (fnGetTransformParent && fnGetWorldRotation)
+							if (void* parent = fnGetTransformParent(trans))
+							{
+								float q[4]{0, 0, 0, 1}; fnGetWorldRotation(parent, q);
+								const Quaternion p(q[0], q[1], q[2], q[3]);
+								if (std::isfinite(Quaternion::Dot(p, p)) && Quaternion::Dot(p, p) > 1e-6f)
+									parentRotation = p.Normalized();
+							}
+						gkLocalOut = (parentRotation.Inverse() * facing * parentRotation * gkLocalOut).Normalized();
+					}
 					if (parentHid >= 0 && parentHid < 64 && writtenWorldRotValid[parentHid])
 					{
 						parentWorld = writtenWorldRots[parentHid];
@@ -3452,6 +3473,31 @@ namespace GakuMotion
 			if (!std::isfinite(offset.x) || !std::isfinite(offset.y) || !std::isfinite(offset.z)) return false;
 			initialPositionOffset = offset;
 			return true;
+		}
+
+		// User facing correction in degrees around WORLD up, applied to the driven
+		// pose only. The photo background decides the actor's native facing; this
+		// turns the dancer without touching the actor component or rest snapshot,
+		// so stopping playback still returns to the scene's own pose.
+		float initialYawDegrees{0.0f};
+		static float NormalizeYaw(float degrees)
+		{
+			if (!std::isfinite(degrees)) return 0.0f;
+			degrees = std::fmod(degrees, 360.0f);
+			if (degrees > 180.0f) degrees -= 360.0f;
+			if (degrees <= -180.0f) degrees += 360.0f;
+			return degrees;
+		}
+		bool SetInitialYaw(float degrees)
+		{
+			if (!std::isfinite(degrees)) return false;
+			initialYawDegrees = NormalizeYaw(degrees);
+			return true;
+		}
+		Quaternion InitialYawRotation() const
+		{
+			return initialYawDegrees == 0.0f ? Quaternion::Identity() :
+				Quaternion::FromEulerDegreesXYZ(0.0f, initialYawDegrees, 0.0f);
 		}
 
 		void ApplyMotion(const MotionClip& clip, float currentTimeSeconds, void* actor = nullptr,

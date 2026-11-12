@@ -557,6 +557,23 @@ int main(int argc, char** argv)
 			"disabled panel explains that the next Photography entry uses the choice directly");
 	}
 	{
+		Harness app(root);
+		app.core.gui.activePage = GuiPage::Motion;
+		app.contextPatch = [](GuiContext& context) { context.injectionAllowed = true; };
+		app.Settle();
+		app.Click("右转 90°"); app.Settle();
+		Check(app.core.player.controller.initialYawDegrees == 90.0f, "turn right button sets facing +90");
+		app.Click("转身 180°"); app.Settle();
+		Check(app.core.player.controller.initialYawDegrees == -90.0f, "turn around wraps facing into range");
+		app.Click("左转 90°"); app.Settle();
+		Check(app.core.player.controller.initialYawDegrees == 180.0f, "turn left button subtracts 90");
+		app.Click("重置朝向"); app.Settle();
+		Check(app.core.player.controller.initialYawDegrees == 0.0f, "reset facing returns to native facing");
+		app.Click("让角色面向镜头"); app.Settle();
+		Check(app.Text().find("无法读取角色或游戏镜头位置") != std::string::npos,
+			"face camera without a target reports why nothing turned");
+	}
+	{
 		const ImGuiConfigFlags originalConfigFlags = io.ConfigFlags;
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Escape closes native combo popups.
 		Harness app(root);

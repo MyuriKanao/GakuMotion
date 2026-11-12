@@ -322,7 +322,7 @@ namespace GakuMotion
 			StageSettings, StagePreset, ToggleStageCandidate, ScanStageCandidates,
 			MountCustomStage, UnloadCustomStage, RestoreCameraSkybox,
 			SeekFrame, StepFrame, ReloadMotion, DeleteFiles, StageLoadReplacement, SelectTarget,
-			LiveLightingPreference
+			LiveLightingPreference, InitialYaw, FaceCamera
 		};
 
 		std::atomic<int> guiPhysicsBackend{2};
@@ -359,7 +359,8 @@ namespace GakuMotion
 			std::lock_guard<std::mutex> lock(guiCommandMutex);
 			// Only adjacent scrub/placement updates may coalesce. Begin/end/save/
 			// transport events retain their order across physical frames.
-			if ((cmd.action == GuiAction::ScrubUpdate || cmd.action == GuiAction::InitialPosition) && !guiCommands.
+			if ((cmd.action == GuiAction::ScrubUpdate || cmd.action == GuiAction::InitialPosition ||
+				cmd.action == GuiAction::InitialYaw) && !guiCommands.
 				empty() &&
 				guiCommands.back().action == cmd.action)
 				guiCommands.back() = std::move(cmd);
@@ -411,6 +412,46 @@ namespace GakuMotion
 			GuiCommand cmd{GuiAction::InitialPosition};
 			cmd.position = offset;
 			QueueGui(std::move(cmd));
+		}
+
+		void QueueInitialYaw(float degrees) { QueueGui({GuiAction::InitialYaw, degrees}); }
+		void QueueFaceCamera() { QueueGui({GuiAction::FaceCamera}); }
+
+		// A changed facing invalidates the plugin camera's captured actor frame;
+		// releasing it makes the next tick re-anchor to the turned dancer.
+		bool SetInitialYaw(float degrees)
+		{
+			const float before = player.controller.initialYawDegrees;
+			if (!player.controller.SetInitialYaw(degrees)) return false;
+			if (player.controller.initialYawDegrees != before) camera.Release();
+			return true;
+		}
+
+		// Turn the dancer to face the game's current camera, horizontally.
+		// Uses only the actor pivot, the camera position and the native facing,
+		// so the result does not depend on the current animated pose.
+		std::string facingNotice;
+		bool FaceCamera()
+		{
+			void* actor = player.controller.targetActor;
+			Vector3 origin, hips, cameraPosition;
+			Quaternion actorRotation;
+			if (!actor || !camera.fnActorPose || !camera.fnCameraPosition ||
+				!camera.fnActorPose(actor, origin, actorRotation, hips) || !camera.fnCameraPosition(cameraPosition))
+			{
+				facingNotice = "无法读取角色或游戏镜头位置；请在偶像摄影中选中角色后重试";
+				return false;
+			}
+			const auto yaw = FacingYawToward(actorRotation, origin, cameraPosition);
+			if (!yaw)
+			{
+				facingNotice = "镜头与角色水平位置重合，无法判断方向";
+				return false;
+			}
+			// fnActorPose already includes the current correction; add the delta.
+			SetInitialYaw(player.controller.initialYawDegrees + *yaw);
+			facingNotice = "已让角色正面朝向当前镜头（朝向修正 " + jsonlite::FormatNumber(player.controller.initialYawDegrees, 1) + "°）";
+			return true;
 		}
 
 		void QueueCameraSettings(const GakuMotion::CameraSettings& settings)
@@ -739,6 +780,10 @@ namespace GakuMotion
 				case GuiAction::PickTarget: PickBoundActorAsTarget();
 					break;
 				case GuiAction::InitialPosition: player.controller.SetInitialPositionOffset(cmd.position);
+					break;
+				case GuiAction::InitialYaw: SetInitialYaw(cmd.value);
+					break;
+				case GuiAction::FaceCamera: FaceCamera();
 					break;
 				case GuiAction::SaveInitialPosition: SaveInitialPosition();
 					break;
@@ -1927,6 +1972,15 @@ namespace GakuMotion
 				initialPositionNotice = "初始位置文件无效：需要 world 坐标下的三个有限数值";
 				return false;
 			}
+			// Facing is optional so files written before it existed still load.
+			if (const auto* yaw = root.Find("yaw_deg"))
+			{
+				if (!yaw->IsNumber() || !player.controller.SetInitialYaw(yaw->AsFloat(0)))
+				{
+					initialPositionNotice = "初始朝向无效：yaw_deg 需要有限数值；位置已载入";
+					return false;
+				}
+			}
 			initialPositionNotice = "已载入保存的初始位置";
 			return true;
 		}
@@ -1934,7 +1988,8 @@ namespace GakuMotion
 		bool SaveInitialPosition()
 		{
 			const auto offset = player.controller.initialPositionOffset;
-			if (!std::isfinite(offset.x) || !std::isfinite(offset.y) || !std::isfinite(offset.z))
+			const float yaw = player.controller.initialYawDegrees;
+			if (!std::isfinite(offset.x) || !std::isfinite(offset.y) || !std::isfinite(offset.z) || !std::isfinite(yaw))
 			{
 				initialPositionNotice = "初始位置保存失败：坐标必须为有限数值";
 				return false;
@@ -1950,7 +2005,7 @@ namespace GakuMotion
 			std::ofstream out(MotionPathFromUtf8(temporary), std::ios::binary | std::ios::trunc);
 			out << "{\n  \"version\": 1,\n  \"space\": \"world\",\n  \"offset_m\": ["
 				<< jsonlite::FormatNumber(offset.x, 6) << ", " << jsonlite::FormatNumber(offset.y, 6) << ", "
-				<< jsonlite::FormatNumber(offset.z, 6) << "]\n}\n";
+				<< jsonlite::FormatNumber(offset.z, 6) << "],\n  \"yaw_deg\": " << jsonlite::FormatNumber(yaw, 3) << "\n}\n";
 			out.close();
 			if (!out)
 			{
@@ -2822,6 +2877,7 @@ namespace GakuMotion
 			ctx.importProgress = &guiImportProgressSnapshot;
 			ctx.playlistNotice = playlistNotice;
 			ctx.initialPositionNotice = initialPositionNotice;
+			ctx.facingNotice = facingNotice;
 			ctx.soleSettings = soleSettings;
 			ctx.soleSnapshot = soleSnapshot;
 			ctx.soleNotice = soleNotice;
@@ -2852,6 +2908,11 @@ namespace GakuMotion
 			{
 				static_cast<Core*>(self)->QueueGui({GuiAction::SaveInitialPosition});
 			};
+			ctx.fnSetInitialYaw = [](void* self, float degrees)
+			{
+				static_cast<Core*>(self)->QueueInitialYaw(degrees);
+			};
+			ctx.fnFaceCamera = [](void* self) { static_cast<Core*>(self)->QueueFaceCamera(); };
 			ctx.fnPickFile = fnPickFile;
 			ctx.fnBeginPickFile = fnBeginPickFile;
 			ctx.fnPollPickFile = fnPollPickFile;
