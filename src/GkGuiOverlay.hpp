@@ -88,6 +88,8 @@ namespace GakuMotion
 		std::string playlistNotice;
 		uint64_t libraryRevision{0}, loadedMotionGeneration{0}, injectionSession{0};
 		std::string libraryNotice, loadedMotionKey;
+		tempo::Result libraryTempo;
+		bool tempoAnalyzing{};
 		bool libraryRefreshing{false}, loadedSourceMissing{false}, loadedSourceChanged{false};
 		std::string boundActorLabel, targetActorLabel;
 		std::string initialPositionNotice;

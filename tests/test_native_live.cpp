@@ -47,6 +47,10 @@ namespace
         Check(!BundleName("unknown", "env_3d_", names), "uncataloged resource is not guessed");
         names.insert("env_3d_env_3d_fixture");
         Check(!BundleName("env_3d_fixture", "env_3d_", names), "ambiguous names rejected");
+        auto preferred=SongFixture("music-preferred",2);preferred.variant="TrueEnd";
+        Check(data.Publish({SongFixture(),preferred}) && data.ForStage("env_3d_fixture")->key==preferred.key,
+            "automatic template selection prefers TrueEnd on the exact current stage");
+        Check(!data.ForStage("env_3d_fixture_extra"),"automatic matching never borrows another stage's hardware by prefix");
     }
     void TestSession()
     {
@@ -95,6 +99,8 @@ namespace
         Check(stage_load::IsTarget("env_3d_fixture") && !stage_load::IsSavedTarget("env_3d_fixture"), "dynamic admission separated from restart-safe preference");
         manager.settings.liveLighting.songKey = "music-notfound@1";
         Check(manager.GetLoadReplacementKey() == fixed, "unknown song uses saved next-load preference without guessing");
+        manager.settings.liveLighting.songKey.clear();
+        Check(manager.GetLoadReplacementKey()==fixed,"automatic template matching preserves the selected next-load stage");
         auto settings = stage_light::Settings{}; settings.mode = stage_light::Mode::SongTimeline; settings.songKey = "music-fixture@1";
         settings.nativeOffset = 2.5f;
         const auto dir = std::filesystem::temp_directory_path() / ("gk-native-live-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));

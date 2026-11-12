@@ -2,6 +2,13 @@
 #ifdef GKMOTION_GUI_ACTIVE
 namespace GakuMotion
 {
+    inline void DrawLibraryTempo(const GuiContext& ctx)
+    {
+        ImGui::TextWrapped("当前播放曲目：%s（在曲库选择；此处不切换音频或动作）",ctx.loadedMotionKey.empty()?"未加载":ctx.loadedMotionKey.c_str());
+        if (ctx.tempoAnalyzing) ImGui::TextWrapped("正在分析当前曲目的 BPM / 首拍位置……");
+        else if (ctx.libraryTempo.Ready()) ImGui::TextWrapped("源音频 BPM：%.2f  ·  %s  ·  置信度 %.0f%%",ctx.libraryTempo.bpm,ctx.libraryTempo.source.c_str(),ctx.libraryTempo.confidence*100);
+        else ImGui::TextWrapped("节拍待就绪：%s。可在曲目 info.json 设置 bpm 与 beat_offset_seconds，随后重新加载当前曲目。",ctx.libraryTempo.error.empty()?"请在曲库加载曲目或等待分析":ctx.libraryTempo.error.c_str());
+    }
     inline bool DrawNativeLiveSong(stage_light::Settings& lighting, const GuiContext& ctx)
     {
         bool changed = false;
@@ -10,10 +17,11 @@ namespace GakuMotion
         auto labelOf = [](const native_live::Song& song) {
             return song.title + " / " + (song.variant.empty() ? "演出版本 " + std::to_string(song.grade) : song.variant);
         };
-        const auto caption = selected ? labelOf(*selected) : songs.empty() ? "目录未就绪，请刷新本地曲目" : "请选择歌曲";
-        ImGui::BeginDisabled(songs.empty());
-        if (ImGui::BeginCombo("原生歌曲 / 版本", caption.c_str()))
+        DrawLibraryTempo(ctx);
+        const auto caption = selected ? labelOf(*selected) : lighting.songKey.empty()?"自动（匹配当前舞台）":"已保存模板未就绪";
+        if (ImGui::BeginCombo("原生灯光模板", caption.c_str()))
         {
+            if (ImGui::Selectable("自动（匹配当前舞台）",lighting.songKey.empty())) { lighting.songKey.clear();changed=true; }
             for (const auto& song : songs)
             {
                 const auto label = labelOf(song) + "##" + song.key;
@@ -23,9 +31,8 @@ namespace GakuMotion
             }
             ImGui::EndCombo();
         }
-        ImGui::EndDisabled();
-        changed |= ImGui::SliderFloat("原生时间轴偏移", &lighting.nativeOffset, -10.0f, 10.0f, "%.2f s");
-        if (ImGui::Button("刷新本地曲目")) native_live::refreshRequested.store(true);
+        changed |= ImGui::SliderFloat("灯光拍点偏移", &lighting.nativeOffset, -10.0f, 10.0f, "%.2f s");
+        if (ImGui::Button("刷新原生模板")) native_live::refreshRequested.store(true);
         ImGui::SameLine();
         if (ImGui::Button("重试原生灯光")) native_live::retryRequested.store(true);
         if (selected)
@@ -34,8 +41,8 @@ namespace GakuMotion
             ImGui::TextWrapped("原生时间轴：%s", selected->timeline.c_str());
         }
         if (!ctx.nativeLiveCatalogNotice.empty()) ImGui::TextWrapped("%s", ctx.nativeLiveCatalogNotice.c_str());
-        ImGui::TextWrapped("先选歌曲与演出版本，再重新进入摄影加载配套舞台。只加载已缓存资源；歌曲/舞台不匹配时保持待机，不使用 Agitato 灯控代替其他歌曲。");
-        ImGui::TextWrapped("仅复用原生灯具、激光、特效、荧光棒及 BPM 轨；外部动作与当前镜头不接管。以动作绝对时间采样，暂停保持、跳转同步。原生画面需游戏内验收。");
+        ImGui::TextWrapped("曲库负责选歌；这里仅选灯控模板。默认自动匹配当前舞台，灯光按当前曲目的 BPM / 拍点重映射，不是按模板原曲秒数播放。手动换模板时需重新进入摄影载入配套舞台。");
+        ImGui::TextWrapped("原生模板保留其灯具编排，节拍适配不等于为外部歌曲复原专属 MV 编排。无模板可用时请选择通用节拍模式；不自动伪装降级。");
         return changed;
     }
 }

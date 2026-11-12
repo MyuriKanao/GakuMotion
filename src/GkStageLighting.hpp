@@ -10,7 +10,7 @@
 
 namespace GakuMotion::stage_light
 {
-    enum class Mode { Native, Wash, Breath, Cycle, SongTimeline };
+    enum class Mode { Native, Wash, Breath, Cycle, SongTimeline, AutoBeat };
     struct Settings
     {
         Mode mode{Mode::Native};
@@ -23,7 +23,7 @@ namespace GakuMotion::stage_light
 
     inline Settings Sanitize(Settings value)
     {
-        if (value.mode < Mode::Native || value.mode > Mode::SongTimeline) value.mode = Mode::Native;
+        if (value.mode < Mode::Native || value.mode > Mode::AutoBeat) value.mode = Mode::Native;
         value.palette = std::clamp(value.palette, 0, 2);
         auto limit = [](float v, float low, float high, float fallback)
         { return std::isfinite(v) ? std::clamp(v, low, high) : fallback; };
@@ -155,7 +155,7 @@ namespace GakuMotion::stage_light
         {
             settings = Sanitize(settings);
             lights = beams = 0;
-            if (!scene || settings.mode == Mode::Native || settings.mode == Mode::SongTimeline) return Restore();
+            if (!scene || settings.mode == Mode::Native || settings.mode == Mode::SongTimeline || settings.mode == Mode::AutoBeat) return Restore();
             if (restorePending) { Restore(); return false; } // Cleanup precedes any new writes.
             Access access(api);
             if (!access.ready || !api.read || !api.write) return false;

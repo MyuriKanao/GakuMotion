@@ -60,7 +60,7 @@ namespace NativeLiveRuntime
             RequireCached(request.song.timeline); RequireCached(request.song.stage);
             step = Step::Bundle; // Partial initialization is also releasable.
             beforeScenes = Scenes(); ownerScene = request.owner.sceneHandle; stageScene = request.stageScene;
-            bundle = request.song.timeline;
+            bundle = BundleKey(request.song.timeline);
             r::Arena roots;
             NewGo(helper, "GakuMotion.NativeLive.Source.Plugin", ownerScene, roots);
             loader = r::Root(NewComponent(helper.Get(), sceneLoaderClass, roots));

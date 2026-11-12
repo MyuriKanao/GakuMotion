@@ -1,5 +1,6 @@
 // Production catalog reader and bounded string helper; synthetic managed data.
 #include "GkNativeLive.hpp"
+#include "GkExactMethod.hpp"
 #include <cstdio>
 #include <memory>
 #include <cstring>
@@ -11,19 +12,24 @@ namespace GakuMotion::host
 }
 namespace NativeLiveRuntime
 {
-    struct ManagedString { void* klass; void* monitor{}; int32_t length{}; char16_t chars[8192]{}; };
+    struct ManagedString { void* klass; void* monitor{}; int32_t notLength{0x7fffffff};int32_t length{}; char16_t chars[8192]{}; };
     using Il2CppString = ManagedString;
     struct Object { void* klass; std::vector<void*> items; int index{}; };
     struct Row { std::string id, stage, timeline, title; int grade; };
-    enum Op { Database, Bundles, Master, Lives, Count, Item, SongId, Grade, StageId, TimelineId, Music, Title, Dependencies, DownloadSize, SetArray, Last };
+    enum Op { Database, Bundles, Master, Lives, Count, Item, SongId, Grade, StageId, TimelineId, Music, Title, Dependencies, DownloadSize, SetArray,Lookup, Last };
     inline int methods[Last]{}, types[6]{};
     inline const void *getDatabase=&methods[Database], *allBundles=&methods[Bundles], *getMaster=&methods[Master], *getLives=&methods[Lives],
         *listCount=&methods[Count], *listItem=&methods[Item], *getSongKey=&methods[SongId], *getGrade=&methods[Grade],
         *getStageKey=&methods[StageId], *getTimelineKey=&methods[TimelineId], *getMusic=&methods[Music], *getTitle=&methods[Title],
         *dependencies=&methods[Dependencies], *downloadSize=&methods[DownloadSize], *setArrayValue=&methods[SetArray];
+    inline const void* lookupBundle=&methods[Lookup];
+    inline void* itemClass=&types[0];inline void *itemNameField=&types[1],*nullableLookupClass=nullptr;
+    inline std::map<std::string,std::string> nativeNames;
+    inline struct { void* (*unbox)(void*)=[](void* p) {return p;}; } g_safeBones;
+    namespace StageLightingRuntime { inline void (*fieldSet)(void*,void*,void*)=[](void*,void*,void*) {}; }
     inline void *dataClass=&types[0], *liveMasterClass=&types[1], *listClass=&types[2], *liveClass=&types[3], *musicClass=&types[4],
         *stringClass=&types[5], *gradeClass=&types[3];
-    inline bool metadataReady{true}, mainThread{true}, failCatalog{};
+    inline bool metadataReady{true}, mainThread{true}, failCatalog{},failEnumeration{};
     inline std::string error, catalogNotice;
     inline int sortOrder{};
     inline struct { bool Valid() const { return true; } } g_sceneOwner;
@@ -39,6 +45,7 @@ namespace NativeLiveRuntime
     {
         auto value=std::make_unique<ManagedString>(); value->klass=stringClass; value->length=static_cast<int32_t>(text.size());
         for (size_t i=0; i<text.size() && i<8192; ++i) value->chars[i]=static_cast<unsigned char>(text[i]);
+        if (text=="wide-title") { value->length=200;for (int i=0;i<200;++i) value->chars[i]=0x3042; }
         auto result=value.get(); strings.push_back(std::move(value)); return result;
     }
     inline std::string Il2CppStringToUtf8(void* text)
@@ -53,8 +60,13 @@ namespace NativeLiveRuntime
         struct Failure:std::runtime_error { using std::runtime_error::runtime_error; };
         inline void Require(bool ok,const char* message) { if (!ok) throw Failure(message); }
         inline void* managedStringClass=stringClass;
+        inline int32_t (*stringLength)(void*)=[](void* p) {return static_cast<ManagedString*>(p)->length;};
+        inline const char16_t* (*stringChars)(void*)=[](void* p)->const char16_t* {return static_cast<ManagedString*>(p)->chars;};
 #include "GkNativeLiveTextRuntime.hpp"
         struct Arena { void* Keep(void* value) { return value; } };
+        inline void* objectNew(void*) { return nullptr; }
+        inline void* Field(void*,const char*,GakuMotion::ExactMethodMetadata::Type) {return nullptr;}
+        inline void* FieldObject(void* value,void*,Arena&) {return static_cast<Object*>(value)->items.at(0);}
         inline bool Is(void* value,void* klass) { return value && *static_cast<void**>(value)==klass; }
         inline std::vector<void*> Items(void* value,size_t limit=16384)
         { Require(value!=nullptr,"missing array"); const auto& items=static_cast<Object*>(value)->items; Require(items.size()<=limit,"array bound"); return items; }
@@ -67,14 +79,19 @@ namespace NativeLiveRuntime
         inline void* String(const std::string& value,Arena&) { return MakeText(value); }
         inline void* Call(const void* method,void* target=nullptr,void** args=nullptr)
         {
-            if (method==getDatabase) return &fixtureDatabase;
-            if (method==allBundles) { Require(!failCatalog,"injected catalog failure"); return &bundles; }
+            if (method==getDatabase) {Require(!failCatalog,"injected catalog failure");return &fixtureDatabase;}
+            if (method==allBundles) { Require(!failEnumeration,"injected enumeration failure"); return &bundles; }
             if (method==getMaster) return &fixtureMaster;
             if (method==getLives) return &lives;
             if (method==listItem) return lives.items.at(*static_cast<int*>(args[0]));
             if (method==dependencies) return &deps;
             if (method==setArrayValue)
             { static_cast<Object*>(target)->items.at(*static_cast<int*>(args[1]))=args[0]; return nullptr; }
+            if (method==lookupBundle)
+            {
+                const auto key=Text(args[0]);auto found=nativeNames.find(key);if (found==nativeNames.end()) return nullptr;
+                auto item=std::make_unique<Object>(Object{itemClass,{MakeText(found->second)}});auto result=item.get();objects.push_back(std::move(item));return result;
+            }
             auto value=static_cast<Object*>(target);
             if (method==getMusic) { auto music=std::make_unique<Object>(Object{musicClass,{},value->index}); auto result=music.get();objects.push_back(std::move(music));return result; }
             const auto& row=fixtureRows.at(value->index);
@@ -120,11 +137,12 @@ int main()
     bundles.items={MakeText("env_3d_fixture"),MakeText("tln_live_fixture"),MakeText(longDependency),nullptr,&wrong,MakeText(std::string(4097,'x')),MakeText(nulName)};
     fixtureRows={{"music-catalog-a","fixture","fixture","Synthetic Agitato",1},
           {"music-catalog-b","fixture","fixture",std::string(600,'t'),2},
-          {"music-catalog-c","fixture","fixture",std::string(200,static_cast<char>(0x81)),3},
+          {"music-catalog-c","fixture","fixture","wide-title",3},
           {"music-catalog-bad","fixture",std::string(600,'x'),"bad",4},
           {"music-catalog-missing","missing","missing","missing",5}};
     for (int i=0;i<static_cast<int>(fixtureRows.size());++i)
     { auto row=std::make_unique<Object>(Object{liveClass,{},i});lives.items.push_back(row.get());objects.push_back(std::move(row)); }
+    nativeNames={{"env_3d_fixture","env_3d_fixture"},{"tln_live_fixture","tln_live_fixture"},{longDependency,longDependency}};
     ReadCatalog();
     auto snapshot=GakuMotion::native_live::catalog.Snapshot();
     Check(snapshot.size()==3,"one long/invalid global name and incomplete row never hide all valid songs");
@@ -142,6 +160,12 @@ int main()
     Check(GakuMotion::native_live::catalog.Snapshot()==snapshot,"failed refresh preserves prior valid catalog");
     Check(catalogNotice.find("资源目录")!=std::string::npos && catalogNotice.find("injected")!=std::string::npos,"refresh error identifies failing reader phase");
     failCatalog=false;GakuMotion::native_live::refreshRequested.store(true);PollCatalog();
-    Check(catalogNotice.find("本地原生 Live 曲目：3")!=std::string::npos,"explicit refresh recovers catalog and ready notice");
+    Check(catalogNotice.find("可用原生灯光模板：3")!=std::string::npos,"explicit refresh recovers catalog and ready notice");
+    bundles.items.clear();ReadCatalog();
+    Check(GakuMotion::native_live::catalog.Snapshot().size()==3,"native item lookup pairs templates even when global name enumeration is empty");
+    failEnumeration=true;ReadCatalog();
+    Check(GakuMotion::native_live::catalog.Snapshot().size()==3,"global enumeration failure is not a prerequisite for native item lookup");failEnumeration=false;
+    nativeNames["tln_live_fixture"]="opaque-bundle-key";nativeNames["opaque-bundle-key"]="opaque-bundle-key";ReadCatalog();
+    Check(BundleKey("tln_live_fixture")=="opaque-bundle-key","canonical template ID retains authoritative native bundle key");
     std::printf("Native Live catalog adapter: %d passed, %d failed\n",passed,failed);return failed?1:0;
 }

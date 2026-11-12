@@ -1,5 +1,7 @@
 # 原生歌曲灯控（0.1.2-dev，本地开发版）
 
+> 本文保留 0.1.2-dev 的历史实现与验证记录。0.1.3-dev 的当前选歌方式、BPM 重映射及目录修复见 [曲库节拍驱动灯光](LIBRARY_TEMPO_LIGHTING.md)；不再需要在舞台页另选播放歌曲。
+
 ## 实现范围
 
 此版本新增“原生歌曲时间轴”，复用客户端的 `LiveEquipmentController`、`LiveEquipmentReceiver`、设备轨道及 BPM 轨道，不再以手工配色/BPM 模拟原生曲目。外部动作仍由原播放器驱动，现有相机控制保持独立；原生演员、相机、音频、Control、Signal 等轨道不加入自有图。

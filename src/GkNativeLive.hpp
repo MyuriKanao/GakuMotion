@@ -1,5 +1,6 @@
 #pragma once
 #include "GkInjectionPolicy.hpp"
+#include "GkTempo.hpp"
 #include <algorithm>
 #include <cmath>
 #include <mutex>
@@ -75,6 +76,13 @@ namespace GakuMotion::native_live
         {
             std::lock_guard lock(mutex);
             for (const auto& song : songs) if (song.key == key) return song;
+            return {};
+        }
+        std::optional<Song> ForStage(std::string_view stage) const
+        {
+            std::lock_guard lock(mutex);
+            for (const auto& song:songs) if (song.stage==stage && song.variant=="TrueEnd") return song;
+            for (const auto& song : songs) if (song.stage==stage) return song;
             return {};
         }
         bool HasStage(std::string_view stage) const

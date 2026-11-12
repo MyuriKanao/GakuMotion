@@ -47,7 +47,7 @@ namespace GakuMotion::stage_load
                     { error = "Invalid live lighting settings"; return false; }
                 }
                 const double mode = saved->Find("mode")->numberValue, palette = saved->Find("palette")->numberValue;
-                if (mode < 0 || mode > 4 || std::floor(mode) != mode || palette < 0 || palette > 2 || std::floor(palette) != palette)
+                if (mode < 0 || mode > 5 || std::floor(mode) != mode || palette < 0 || palette > 2 || std::floor(palette) != palette)
                 { error = "Invalid live lighting mode/palette"; return false; }
                 loadedLighting = {static_cast<stage_light::Mode>(mode), static_cast<int>(palette),
                     saved->Find("strength")->AsFloat(1), saved->Find("bpm")->AsFloat(120), saved->Find("speed")->AsFloat(1)};
