@@ -15,6 +15,7 @@
 #include "GkCaptureSafety.hpp"
 #include "GkStageLoadSettings.hpp"
 #include "GkDataLayout.hpp"
+#include "GkLibraryTempo.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -76,6 +77,17 @@ namespace GakuMotion
 		StageManager stageManager;
 		std::string stageLoadNotice;
 		std::string nativeLiveCatalogNotice;
+		tempo::Library libraryTempo;
+		void UpdateLibraryTempo()
+		{
+			const auto mode=stageManager.settings.liveLighting.mode;
+			const bool needed=mode==stage_light::Mode::SongTimeline || mode==stage_light::Mode::AutoBeat;
+			libraryTempo.Update(needed && !loadedMotionKey.empty() && !loadedSourceMissing && !loadedSourceChanged ? player.currentMotionDir : "",loadedMotionGeneration);
+		}
+		double LightingAudioTime(double performanceTime) const
+		{ return TrackSourceTime(static_cast<float>(performanceTime),player.timing.audio); }
+		bool LibraryTempoReady() const
+		{ return !loadedMotionKey.empty() && !loadedSourceMissing && !loadedSourceChanged && libraryTempo.Matches(player.currentMotionDir,loadedMotionGeneration) && libraryTempo.value.Ready(); }
 		injection::Policy injectionPolicy;
 		// The runtime enables enforcement before initialization. Offline consumers
 		// may exercise the playback core without a game or native hook service.
@@ -1180,6 +1192,7 @@ namespace GakuMotion
 			player.loadedMotionFile.clear();
 			currentMotionIndex = -1;
 			loadedMotionKey.clear();
+			libraryTempo.Update("");
 			loadedMotionEntry = {};
 			loadedSourceMissing = loadedSourceChanged = false;
 			++loadedMotionGeneration;
@@ -1964,6 +1977,7 @@ namespace GakuMotion
 
 			currentMotionIndex = index;
 			loadedMotionKey = entry.name;
+			libraryTempo.Update("");
 			loadedMotionEntry = entry;
 			loadedMotionVersion = ReadMotionFileVersion(entry.dir);
 			loadedSourceMissing = loadedSourceChanged = false;
@@ -2734,6 +2748,8 @@ namespace GakuMotion
 			ctx.libraryNotice = libraryNotice;
 			ctx.libraryRefreshing = libraryScan.valid();
 			ctx.loadedMotionKey = loadedMotionKey;
+			ctx.libraryTempo = libraryTempo.value;
+			ctx.tempoAnalyzing = libraryTempo.analyzing;
 			ctx.loadedSourceMissing = loadedSourceMissing;
 			ctx.loadedSourceChanged = loadedSourceChanged;
 			ctx.actorRosterEpoch = sceneActorRegistry.Epoch();

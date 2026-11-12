@@ -166,7 +166,7 @@ if ($LASTEXITCODE -ne 0) { throw "Stage-lighting adapter build failed (exit=$LAS
 if ($LASTEXITCODE -ne 0) { throw "Stage-lighting adapter tests failed (exit=$LASTEXITCODE)" }
 
 Write-Host "=== [3/3] ImGui overlay skeleton syntax check ===" -ForegroundColor Cyan
-foreach ($nativeTest in @('native_live', 'native_live_graph', 'native_live_task', 'native_live_catalog')) {
+foreach ($nativeTest in @('native_live', 'native_live_graph', 'native_live_task', 'native_live_catalog', 'library_tempo')) {
     $nativeExe = Join-Path $buildDir ('test_' + $nativeTest + '.exe')
     & $compiler '/nologo' '/std:c++20' '/utf-8' '/EHsc' '/MT' '/W4' "/I$srcDir" "/I$incDir" "/I$KineTextureInclude" `
         (Join-Path $PSScriptRoot ('test_' + $nativeTest + '.cpp')) "/Fe:$nativeExe" "/Fo:$(Join-Path $objDir ($nativeTest + '.obj'))"

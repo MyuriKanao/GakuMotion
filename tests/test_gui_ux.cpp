@@ -489,7 +489,7 @@ void ImGuiTestEngineHook_ItemAdd(ImGuiContext* context, ImGuiID id, const ImRect
 	// This vendored BeginCombo emits ItemAdd but no ItemInfo. Identify its real
 	// submitted item by the current ID stack without changing production code.
 	if (context->CurrentWindow && !context->CurrentWindow->IDStack.empty())
-		for (const char* label : {"##play_mode", "##playback_speed", "##camera_quick_mode", "##physics_engine_select", "##drive_actor_combo", "##camera_mode", "跟随部位", "灯光效果", "灯光配色", "下次摄影背景", "原生歌曲 / 版本"})
+		for (const char* label : {"##play_mode", "##playback_speed", "##camera_quick_mode", "##physics_engine_select", "##drive_actor_combo", "##camera_mode", "跟随部位", "灯光效果", "灯光配色", "下次摄影背景", "原生灯光模板"})
 			if (ImHashStr(label, 0, context->CurrentWindow->IDStack.back()) == id) items[id].label = label;
 }
 void ImGuiTestEngineHook_ItemInfo(ImGuiContext*, ImGuiID id, const char* label, ImGuiItemStatusFlags status)

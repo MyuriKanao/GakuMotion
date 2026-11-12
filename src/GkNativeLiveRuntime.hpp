@@ -9,11 +9,12 @@
 #include "GkNativeLiveClonerRuntime.hpp"
 #include "GkNativeLiveHooksRuntime.hpp"
 #include "GkNativeLiveGraphRuntime.hpp"
+#include "GkNativeLiveTempoRuntime.hpp"
 namespace NativeLiveRuntime
 {
     namespace live = GakuMotion::native_live;
     namespace light = GakuMotion::stage_light;
-    struct Engine { live::Request request; SourceScene source; NativeGraph graph; bool built{}; };
+    struct Engine { live::Request request; SourceScene source; NativeGraph graph; GakuMotion::tempo::BeatMap beats; bool built{}; };
     inline std::unique_ptr<Engine> engine;
     inline live::Session session;
     inline bool shuttingDown{};
@@ -23,7 +24,8 @@ namespace NativeLiveRuntime
     {
         if (shuttingDown || settings.mode != light::Mode::SongTimeline || !ProtectionOnUnityThread() ||
             !g_runtimeReady.load(std::memory_order_acquire) || !g_activeSceneVerified) return {};
-        const auto song = live::catalog.Find(settings.songKey);
+        if (!GakuMotion::Core::Instance().LibraryTempoReady()) return {};
+        const auto song = settings.songKey.empty()?live::catalog.ForStage(SceneOwnerRuntime::cachedActiveScene):live::catalog.Find(settings.songKey);
         if (!song || SceneOwnerRuntime::cachedActiveScene != song->stage || !g_verifiedActiveSceneHandle ||
             GakuMotion::stage_load::receipt.Context(song->stage, g_verifiedOwnerSceneName, g_sceneOwner) !=
                 GakuMotion::injection::Context::Photography) return {};
@@ -49,14 +51,24 @@ namespace NativeLiveRuntime
             if (result != live::Operation::Ready)
             { if (result == live::Operation::Failed) error = "native source load faulted or canceled"; return result; }
             if (!engine->built)
-            { engine->graph.Build(engine->request, engine->source.scene); engine->built = true; error.clear(); }
+            {
+                engine->graph.Build(engine->request, engine->source.scene);
+                BuildTemplateBeats(engine->graph,engine->beats);engine->built = true; error.clear();
+            }
             return live::Operation::Ready;
         }
         catch (const std::exception& problem) { error = problem.what(); return live::Operation::Failed; }
     }
     inline bool Sample(double time)
     {
-        try { if (engine) engine->graph.offset = requestedOffset; return engine && engine->built && engine->graph.Sample(time); }
+        try
+        {
+            auto& core=GakuMotion::Core::Instance();
+            if (!engine || !engine->built || !core.LibraryTempoReady()) return false;
+            const double beat=core.libraryTempo.value.Beat(core.LightingAudioTime(time)+requestedOffset);
+            engine->graph.offset=0;
+            return engine->graph.Sample(engine->beats.Seconds(beat));
+        }
         catch (const std::exception& problem) { error = problem.what(); return false; }
     }
     inline bool Release()
@@ -78,15 +90,19 @@ namespace NativeLiveRuntime
     inline std::string Notice(const light::Settings& settings)
     {
         if (!metadataReady) return "原生灯光接口未匹配：" + error;
+        const auto& core=GakuMotion::Core::Instance();
+        if (core.libraryTempo.analyzing) return "正在分析曲库当前曲目的 BPM / 拍点";
+        if (!core.LibraryTempoReady()) return "曲库节拍待就绪："+core.libraryTempo.value.error;
         if (!error.empty()) return "原生灯光：" + error + "（未回退为程序化灯光）";
         if (session.phase == live::Phase::Releasing) return "原生灯光：正在恢复舞台并释放自有时间轴场景";
         if (session.phase == live::Phase::Loading) return "原生灯光：正在读取本地歌曲时间轴";
         if (engine && session.phase == live::Phase::Ready)
-            return "原生歌曲灯光：" + engine->request.song.title + "；设备轨 " +
+            return "曲库节拍驱动："+core.loadedMotionKey+"；原生模板：" + engine->request.song.title + "；设备轨 " +
                 std::to_string(engine->graph.clone.equipmentTracks) + " / BPM 轨 " +
                 std::to_string(engine->graph.clone.bpmTracks) + "（外部动作与镜头不接管；画面待验收）";
-        if (!live::catalog.Find(settings.songKey)) return "请选择本地原生歌曲 / 演出版本；目录未就绪时点击刷新";
-        return "原生灯光待机：请重新进入摄影以载入所选歌曲的配套舞台，然后播放外部动作";
+        if (settings.songKey.empty()) return "自动匹配当前舞台的原生灯光模板；无模板时可选择通用节拍灯光（不伪装为原生编排）";
+        if (!live::catalog.Find(settings.songKey)) return "原生灯光模板目录待就绪；播放曲目仍由曲库选择";
+        return "原生模板待机：请重新进入摄影载入模板配套舞台；灯光将按曲库当前曲目的拍数重定时";
     }
     inline void PollRestoration(bool allowed, const light::Settings& settings)
     {
@@ -106,11 +122,24 @@ namespace NativeLiveRuntime
         if (settings.mode != light::Mode::SongTimeline)
         {
             if (!session.Release()) { notice = Notice(settings); return false; }
+            if (settings.mode==light::Mode::AutoBeat)
+            {
+                auto& core=GakuMotion::Core::Instance();auto driven=settings;
+                if (!core.LibraryTempoReady())
+                {
+                    driven.mode=light::Mode::Native;StageLightingRuntime::Update(driven,seconds,notice);
+                    notice=core.libraryTempo.analyzing?"正在分析当前曲目节拍":"曲库节拍待就绪："+core.libraryTempo.value.error;return false;
+                }
+                driven.mode=light::Mode::Cycle;driven.bpm=60;driven.speed=1;
+                const double time=core.libraryTempo.value.Beat(core.LightingAudioTime(seconds)+settings.nativeOffset);
+                const bool ok=StageLightingRuntime::Update(driven,time,notice);
+                notice="曲库节拍："+core.loadedMotionKey+" / "+std::to_string(core.libraryTempo.value.bpm)+" BPM；"+notice;
+                return ok;
+            }
             return StageLightingRuntime::Update(settings, seconds, notice);
         }
         requestedOffset = settings.nativeOffset;
         const bool ok = session.Update(Desired(settings), seconds);
-        if (engine) engine->graph.offset = settings.nativeOffset;
         notice = Notice(settings); return ok;
     }
     inline void Initialize(HMODULE module)

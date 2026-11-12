@@ -23,7 +23,7 @@ $importInputs = @('interop/GakuMotion.VmdImporter.Native/GakuMotion.VmdImporter.
     'candidate/csharp/src/GakuMotion.VmdImporter/Resources/mmd_source_skeleton.json',
     'tools/vmd2gkmotion/gakumas_morph_map.json', 'tools/vmd2gkmotion/vmd_eye_profile.json',
     'tools/vmd2gkmotion/tooth_appearance_lut.json', 'tools/vmd2gkmotion/root_retarget_profiles.json')
-$inputs = if ($Target -eq 'Runtime') { $runtimeInputs } elseif ($Target -eq 'NativeAOT') { $importInputs } elseif ($Target -eq 'Contracts') { @('tests/test_stage_load_runtime.cpp', 'tests/test_stage_lighting.cpp', 'tests/test_stage_lighting_runtime.cpp', 'tests/test_native_live.cpp', 'tests/test_native_live_graph.cpp', 'tests/test_native_live_task.cpp', 'tests/test_native_live_catalog.cpp') } else { $runtimeInputs + $importInputs }
+$inputs = if ($Target -eq 'Runtime') { $runtimeInputs } elseif ($Target -eq 'NativeAOT') { $importInputs } elseif ($Target -eq 'Contracts') { @('tests/test_stage_load_runtime.cpp', 'tests/test_stage_lighting.cpp', 'tests/test_stage_lighting_runtime.cpp', 'tests/test_native_live.cpp', 'tests/test_native_live_graph.cpp', 'tests/test_native_live_task.cpp', 'tests/test_native_live_catalog.cpp', 'tests/test_library_tempo.cpp') } else { $runtimeInputs + $importInputs }
 foreach ($inputPath in $inputs) {
     if (-not (Test-Path -LiteralPath (Join-Path $repo $inputPath) -PathType Leaf)) { throw ('Missing build input: ' + $inputPath) }
 }
@@ -99,7 +99,7 @@ $env:PATH = (Join-Path $msvc.FullName 'bin\Hostx64\x64') + ';' + (Join-Path $sdk
 $compiler = Join-Path $msvc.FullName 'bin\Hostx64\x64\cl.exe'
 Push-Location -LiteralPath $OutputRoot
 try {
-    foreach ($test in @('stage_load_runtime', 'stage_lighting', 'stage_lighting_runtime', 'native_live', 'native_live_graph', 'native_live_task', 'native_live_catalog')) {
+    foreach ($test in @('stage_load_runtime', 'stage_lighting', 'stage_lighting_runtime', 'native_live', 'native_live_graph', 'native_live_task', 'native_live_catalog', 'library_tempo')) {
         $exe = Join-Path $OutputRoot ($test + '_contracts.exe')
         $obj = Join-Path $OutputRoot ($test + '_contracts.obj')
         $argsForCompiler = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/MT', '/W4',

@@ -21,6 +21,8 @@ namespace NativeLiveRuntime
     inline const void *listCount{}, *listItem{}, *getDatabase{}, *allBundles{}, *dependencies{}, *downloadSize{}, *setArrayValue{};
     inline const void *sceneCount{}, *sceneAt{}, *receiverUpdate{}, *equipmentDispose{};
     inline const void *setWrap{}, *setFixedDuration{}, *setDurationMode{}, *validGraph{};
+    inline const void *lookupBundle{}, *getBpmInfo{}, *evaluateBpm{};
+    inline void *itemClass{}, *itemNameField{}, *nullableLookupClass{};
     inline int holdMode{}, fixedMode{};
     inline void *loaderField{}, *operatorField{}, *equipmentDirectorField{}, *equipmentReceiverField{}, *loaderSceneField{};
     inline void* (*arrayNew)(void*, uintptr_t){};
@@ -31,9 +33,11 @@ namespace NativeLiveRuntime
     inline void Resolve(HMODULE module)
     {
         metadataReady = false;
+        nullableLookupClass=nullptr;
         try
         {
             r::Resolve(module);
+            r::Require(r::stringLength && r::stringChars && r::arrayHeaderSize && r::arrayElementSize, "native string/array ABI exports unavailable");
             arrayNew = reinterpret_cast<decltype(arrayNew)>(GetProcAddress(module, "il2cpp_array_new"));
             objectClass = r::Unity("Object"); goClass = r::Unity("GameObject"); scriptableClass = r::Unity("ScriptableObject");
             typeClass = r::Class("mscorlib.dll", "System", "Type"); stringClass = r::Class("mscorlib.dll", "System", "String");
@@ -149,6 +153,9 @@ namespace NativeLiveRuntime
             find(receiverUpdate, receiverClass, "Update", false, {0x01}, {});
             find(equipmentDispose, equipmentClass, "Dispose", false, {0x01}, {});
             find(validGraph, equipmentClass, "get_IsValidPlayableGraph", false, {0x02}, {});
+            void* bpmInfo=campus("Campus.Timeline", "CampusBpmInfo");
+            find(getBpmInfo,equipmentTrackClass,"get_BpmInfo",false,{0x12,bpmInfo},{});
+            find(evaluateBpm,bpmInfo,"EvaluateBpmAtTime",false,{0x0c},{{0x0c}});
             find(toJson, jsonClass, "ToJson", true, {0x0e}, {{0x1c}, {0x02}});
             // This player's public FromJsonOverwrite wrapper is stripped. Its
             // exact internal endpoint retains the same existing-object path.
@@ -179,6 +186,18 @@ namespace NativeLiveRuntime
             void* octo = r::Class("Octo.dll", "Octo", "OctoManager");
             find(getDatabase, octo, "get_Database", true, {0x12, r::Class("Octo.dll", "Octo", "IDatabase")}, {});
             find(allBundles, dataClass, "GetAllAssetBundleNames", false, {0x1d, arr(stringClass)}, {});
+            itemClass=r::Class("Octo.dll","Octo.Data","Item");
+            itemNameField=r::Field(itemClass,"name",{0x0e});
+            lookupBundle=r::Find(dataClass,"GetAssetBundleItemByName",false,{0x12,itemClass},{{0x0e},{0x02}});
+            if (!lookupBundle)
+            {
+                lookupBundle=r::Find(dataClass,"GetAssetBundleItemByName",false,{0x12,itemClass},{{0x0e},{0x15}});
+                r::Require(lookupBundle!=nullptr,"native bundle lookup unavailable");
+                nullableLookupClass=StageLoader::metadata.classFromType(StageLoader::metadata.parameter(lookupBundle,1));
+                r::Require(nullableLookupClass && r::Layout(nullableLookupClass,2,1) &&
+                    r::Field(nullableLookupClass,"hasValue",{0x02}) && r::Field(nullableLookupClass,"value",{0x02}),"bundle lookup nullable bool layout mismatch");
+            }
+            r::Require(lookupBundle && itemNameField,"native bundle lookup name unavailable");
             find(dependencies, octo, "GetAllDependenciesOfAssetBundle", true, {0x1d, arr(stringClass)}, {{0x0e}});
             downloadSize = r::Find(octo, "GetTotalAssetBundlesSizeToDownload", true, {0x0a}, {{0x15}});
             r::Require(downloadSize != nullptr, "local asset-cache check unavailable");

@@ -3016,6 +3016,7 @@ void MotionShutdown(void*)
 	auto& core = GakuMotion::Core::Instance();
 	std::lock_guard<std::recursive_mutex> stateLock(core.stateMutex);
 	core.WaitForLibraryRefresh();
+	core.libraryTempo.Wait();
 	core.injectionPolicy.SetSceneAllowed(false);
 	core.injectionPolicy.SetCaptureHooksReady(false);
 	if (GakuMotion::host::mainThread.isMainThread &&
@@ -3125,6 +3126,7 @@ void MotionTick(void*, float)
 		std::lock_guard<std::recursive_mutex> lock(core.stateMutex);
 		core.ProcessPendingStageLoadCommands();
 		core.ProcessPendingLibraryCommands();
+		core.UpdateLibraryTempo();
 	}
 	if (g_runtimeReady.load(std::memory_order_acquire))
 	{

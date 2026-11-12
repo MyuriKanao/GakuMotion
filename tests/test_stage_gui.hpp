@@ -43,11 +43,11 @@ void TestEmptyNativeLiveGui(const std::filesystem::path& root)
     app.core.gui.activePage = GuiPage::Stage;
     app.Settle();
     if (!app.ItemWithLabel("灯光效果")) { app.Click("Live 舞台灯光（实验）"); app.Settle(); }
-    const auto* song = app.ItemWithLabel("原生歌曲 / 版本");
-    const auto* refresh = app.ItemWithLabel("刷新本地曲目");
-    Check(song && (song->flags & ImGuiItemFlags_Disabled), "empty native catalog does not show an actionable empty song dropdown");
+    const auto* song = app.ItemWithLabel("原生灯光模板");
+    const auto* refresh = app.ItemWithLabel("刷新原生模板");
+    Check(song && !(song->flags & ImGuiItemFlags_Disabled), "empty template catalog still offers automatic current-stage matching");
     Check(refresh && !(refresh->flags & ImGuiItemFlags_Disabled), "catalog refresh stays available with an empty song list");
-    Check(app.Text().find("目录未就绪，请刷新本地曲目") != std::string::npos, "empty catalog explains the next action instead of asking for an unavailable song");
+    Check(app.Text().find("自动（匹配当前舞台）") != std::string::npos, "empty catalog explains the next action instead of asking for an unavailable song");
 }
 
 void TestNativeLiveGui(const std::filesystem::path& root)
@@ -60,23 +60,36 @@ void TestNativeLiveGui(const std::filesystem::path& root)
     const auto fixed = app.core.stageManager.settings.loadReplacementKey;
     app.Settle();
     if (!app.ItemWithLabel("灯光效果")) { app.Click("Live 舞台灯光（实验）"); app.Settle(); }
-    app.Click("灯光效果"); app.Settle(); app.Click("原生歌曲时间轴"); app.Settle();
+    app.Click("灯光效果"); app.Settle(); app.Click("原生模板 · 跟随曲库节拍"); app.Settle();
     Check(app.core.stageManager.settings.liveLighting.mode == stage_light::Mode::SongTimeline,
         "native song mode reaches Core through real GUI command queue");
     const auto* bpm = app.ItemWithLabel("灯光 BPM");
     Check(bpm && (bpm->flags & ImGuiItemFlags_Disabled), "native song does not replace its BPM with procedural settings");
-    app.Click("原生歌曲 / 版本"); app.Settle();
+    app.Click("原生灯光模板"); app.Settle();
     app.Click("Synthetic Agitato / TrueEnd##music-gui-fixture@1"); app.Settle();
     Check(app.core.stageManager.settings.liveLighting.songKey == "music-gui-fixture@1" &&
         app.core.stageManager.GetLoadReplacementKey() == "env_3d_gui_fixture", "song selection chooses its own paired stage");
     stage_load::Settings loaded; std::string error;
     Check(loaded.Load(MotionPathToUtf8(app.fixture / "stage.json"), error) && loaded.key == fixed &&
         loaded.lighting.songKey == "music-gui-fixture@1", "native preference persists without overwriting saved fixed stage");
-    app.Click("原生歌曲 / 版本"); app.Settle();
+    app.Click("原生灯光模板"); app.Settle();
     app.Click("Synthetic Other / 演出版本 2##music-gui-other@2"); app.Settle();
     Check(app.core.stageManager.GetLoadReplacementKey() == "env_3d_gui_other", "another song switches to another paired stage, not Agitato hardware");
-    native_live::refreshRequested.store(false); app.Click("刷新本地曲目"); app.Settle();
+    native_live::refreshRequested.store(false); app.Click("刷新原生模板"); app.Settle();
     Check(native_live::refreshRequested.exchange(false), "refresh requests main-thread catalog work");
     native_live::retryRequested.store(false); app.Click("重试原生灯光"); app.Settle();
     Check(native_live::retryRequested.exchange(false), "retry is explicit, not a per-frame load storm");
+    const auto loadedKey=app.core.loadedMotionKey;
+    app.Click("原生灯光模板");app.Settle();app.Click("自动（匹配当前舞台）");app.Settle();
+    Check(app.core.stageManager.settings.liveLighting.songKey.empty() && app.core.loadedMotionKey==loadedKey,
+        "automatic stage template matching never selects another library song");
+    app.contextPatch=[](GuiContext& ctx){ctx.loadedMotionKey="ray-synthetic";ctx.libraryTempo={128,.25,1,"曲库元数据",""};ctx.tempoAnalyzing=false;};
+    app.Settle();
+    Check(app.Text().find("ray-synthetic")!=std::string::npos && app.Text().find("128.00")!=std::string::npos,
+        "stage pane shows the actual library track and its BPM, separate from template selection");
+    app.Click("灯光效果");app.Settle();app.Click("通用灯光 · 跟随曲库节拍");app.Settle();
+    Check(app.core.stageManager.settings.liveLighting.mode==stage_light::Mode::AutoBeat && !app.ItemWithLabel("原生灯光模板"),
+        "universal automatic lighting is available without any native-song template selector");
+    const auto* automaticBpm=app.ItemWithLabel("灯光 BPM");
+    Check(automaticBpm && (automaticBpm->flags & ImGuiItemFlags_Disabled),"automatic mode does not use the global manual BPM slider");
 }

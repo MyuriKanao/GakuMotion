@@ -14,6 +14,10 @@ namespace NativeLiveRuntime::reflection
     inline void* (*parentClass)(void*){};
     inline const void* alive{};
     inline void* managedStringClass{};
+    inline int32_t (*stringLength)(void*){};
+    inline const char16_t* (*stringChars)(void*){};
+    inline size_t (*arrayHeaderSize)(){};
+    inline uint32_t (*arrayElementSize)(void*){};
     struct Failure : std::runtime_error { using std::runtime_error::runtime_error; };
     inline void Require(bool value, const char* message) { if (!value) throw Failure(message); }
 
@@ -162,7 +166,11 @@ namespace NativeLiveRuntime::reflection
         Require(array && StageLoader::arrayLength, "native array unavailable");
         const auto count = StageLoader::arrayLength(array);
         Require(count <= limit, "native array exceeds limit");
-        auto values = reinterpret_cast<void**>(static_cast<char*>(array) + 32);
+        Require(arrayHeaderSize && arrayElementSize && g_faceRuntime.objectClass, "native array layout API unavailable");
+        const size_t header=arrayHeaderSize();
+        Require(header>=sizeof(void*)*2 && header<=256 && header%alignof(void*)==0 &&
+            arrayElementSize(g_faceRuntime.objectClass(array))==sizeof(void*), "native reference array layout mismatch");
+        auto values = reinterpret_cast<void**>(static_cast<char*>(array) + header);
         return {values, values + count};
     }
     inline void Resolve(HMODULE module)
@@ -173,6 +181,8 @@ namespace NativeLiveRuntime::reflection
         LIVE_EXPORT(fieldName, "il2cpp_field_get_name"); LIVE_EXPORT(className, "il2cpp_class_get_name");
         LIVE_EXPORT(classNamespace, "il2cpp_class_get_namespace"); LIVE_EXPORT(nestedType, "il2cpp_class_get_nested_types");
         LIVE_EXPORT(parentClass, "il2cpp_class_get_parent");
+        LIVE_EXPORT(stringLength, "il2cpp_string_length"); LIVE_EXPORT(stringChars, "il2cpp_string_chars");
+        LIVE_EXPORT(arrayHeaderSize, "il2cpp_array_object_header_size"); LIVE_EXPORT(arrayElementSize, "il2cpp_array_element_size");
 #undef LIVE_EXPORT
         alive = Find(Unity("Object"), "op_Implicit", true, {0x02}, {{0x12, Unity("Object")}});
         managedStringClass = Class("mscorlib.dll", "System", "String");

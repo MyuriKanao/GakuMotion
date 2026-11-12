@@ -253,6 +253,11 @@
     <ClInclude Include="src\GkSolePitchEnvelope.hpp" />
     <ClInclude Include="src\GkSoleProxyProfile.hpp" />
     <ClInclude Include="src\GkStageManager.hpp" />
+    <ClInclude Include="src\GkTempo.hpp" />
+    <ClInclude Include="src\GkTempoWav.hpp" />
+    <ClInclude Include="src\GkLibraryTempo.hpp" />
+    <ClInclude Include="src\GkNativeLiveLookupRuntime.hpp" />
+    <ClInclude Include="src\GkNativeLiveTempoRuntime.hpp" />
     <ClInclude Include="src\GkNativeLive.hpp" />
     <ClInclude Include="src\GkNativeLiveBindings.hpp" />
     <ClInclude Include="src\GkNativeLiveCatalogRuntime.hpp" />

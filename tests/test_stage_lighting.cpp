@@ -63,6 +63,7 @@ namespace
             "native baseline restores only the exact paired stage");
         const int before = writes;
         Check(controller.Update({Mode::SongTimeline}, 12, 17) && writes == before, "procedural adapter never synthesizes cues for native song mode");
+        Check(controller.Update({Mode::AutoBeat}, 12, 17) && writes == before, "automatic mode requires a resolved library beat clock before procedural writes");
     }
     void TestSampler()
     {
@@ -192,6 +193,9 @@ namespace
         stage_load::Settings saved{stage_load::stages[3].key, {Mode::Cycle, 2, 1.25f, 128, .75f}}, loaded;
         Check(saved.Save(utf8, error) && loaded.Load(utf8, error) && saved.key == loaded.key && saved.lighting == loaded.lighting,
             "expanded stage and lighting settings round-trip atomically");
+        saved.lighting.mode=Mode::AutoBeat;saved.lighting.nativeOffset=.25f;
+        Check(saved.Save(utf8,error) && loaded.Load(utf8,error) && loaded.lighting==saved.lighting,
+            "automatic library beat mode and beat offset round-trip in version-1 settings");
         { std::ofstream out(path); out << "{\"version\":1,\"load_replacement_key\":\"env_3d_live_all001-00-noon\"}"; }
         Check(loaded.Load(utf8, error) && loaded.lighting.mode == Mode::Native, "old version-1 settings retain native lighting by default");
         saved.lighting.bpm = NAN;
