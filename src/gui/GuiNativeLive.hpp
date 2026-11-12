@@ -43,6 +43,10 @@ namespace GakuMotion
         {
             ImGui::TextWrapped("配套舞台：%s", selected->stage.c_str());
             ImGui::TextWrapped("原生时间轴：%s", selected->timeline.c_str());
+            // The paired stage is loaded automatically; it is intentionally not
+            // in the fixed stage list.
+            ImGui::TextWrapped("配套舞台由模板自动载入，不在“下次摄影背景”列表中。选好模板后退出偶像摄影再进入；"
+                "进入后若用游戏原生功能切换背景或横竖屏，会回到原生摄影场景，需要再次重新进入。");
         }
         if (!ctx.nativeLiveCatalogNotice.empty()) ImGui::TextWrapped("%s", ctx.nativeLiveCatalogNotice.c_str());
         ImGui::TextWrapped("曲库负责选歌；这里仅选灯控模板。默认自动匹配当前舞台，灯光按当前曲目的 BPM / 拍点重映射，不是按模板原曲秒数播放。手动换模板时需重新进入摄影载入配套舞台。");

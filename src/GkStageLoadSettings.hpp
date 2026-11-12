@@ -47,7 +47,8 @@ namespace GakuMotion::stage_load
                     { error = "Invalid live lighting settings"; return false; }
                 }
                 const double mode = saved->Find("mode")->numberValue, palette = saved->Find("palette")->numberValue;
-                if (mode < 0 || mode > 5 || std::floor(mode) != mode || palette < 0 || palette > 2 || std::floor(palette) != palette)
+                if (mode < 0 || mode > 5 || std::floor(mode) != mode || palette < 0 ||
+                    palette > stage_light::kCustomPalette || std::floor(palette) != palette)
                 { error = "Invalid live lighting mode/palette"; return false; }
                 loadedLighting = {static_cast<stage_light::Mode>(mode), static_cast<int>(palette),
                     saved->Find("strength")->AsFloat(1), saved->Find("bpm")->AsFloat(120), saved->Find("speed")->AsFloat(1)};
@@ -72,6 +73,32 @@ namespace GakuMotion::stage_load
                         if (!value->IsBool()) { error = "Invalid native live layer setting"; return false; }
                         *enabled = value->boolValue;
                     }
+                // Optional custom palette; older files keep the built-in defaults.
+                if (const auto* count = saved->Find("custom_count"))
+                {
+                    if (!count->IsNumber() || std::floor(count->numberValue) != count->numberValue ||
+                        count->numberValue < 2 || count->numberValue > stage_light::kMaxCustomColors)
+                    { error = "Invalid custom lighting color count"; return false; }
+                    loadedLighting.customCount = static_cast<int>(count->numberValue);
+                }
+                if (const auto* colors = saved->Find("custom_colors"))
+                {
+                    if (!colors->IsArray() || colors->Size() < 1 || colors->Size() > stage_light::kMaxCustomColors)
+                    { error = "Invalid custom lighting colors"; return false; }
+                    for (size_t i = 0; i < colors->Size(); ++i)
+                    {
+                        const auto* color = colors->At(i);
+                        if (!color->IsArray() || color->Size() != 3) { error = "Invalid custom lighting colors"; return false; }
+                        for (size_t channel = 0; channel < 3; ++channel)
+                        {
+                            const auto* value = color->At(channel);
+                            if (!value->IsNumber() || !std::isfinite(value->numberValue) ||
+                                value->numberValue < 0 || value->numberValue > 1)
+                            { error = "Invalid custom lighting colors"; return false; }
+                            loadedLighting.custom[i][channel] = static_cast<float>(value->numberValue);
+                        }
+                    }
+                }
                 if (stage_light::Sanitize(loadedLighting) != loadedLighting)
                 { error = "Live lighting settings out of range"; return false; }
             }
@@ -79,6 +106,21 @@ namespace GakuMotion::stage_load
             lighting = loadedLighting;
             error.clear();
             return true;
+        }
+
+        // All slots are kept so lowering the color count does not lose colors.
+        // %.9g round-trips a float exactly.
+        std::string CustomColors() const
+        {
+            std::string text = "[";
+            for (size_t i = 0; i < lighting.custom.size(); ++i)
+            {
+                char row[96];
+                std::snprintf(row, sizeof(row), "%s[%.9g, %.9g, %.9g]", i ? ", " : "",
+                    lighting.custom[i][0], lighting.custom[i][1], lighting.custom[i][2]);
+                text += row;
+            }
+            return text + "]";
         }
 
         bool Save(const std::string& path, std::string& error) const
@@ -97,7 +139,8 @@ namespace GakuMotion::stage_load
                 ", \"song_key\": \"" + lighting.songKey + "\", \"native_offset\": " + std::to_string(lighting.nativeOffset) +
                 ", \"environment\": " + (lighting.environment ? "true" : "false") +
                 ", \"monitor\": " + (lighting.monitor ? "true" : "false") +
-                ", \"audience\": " + (lighting.audience ? "true" : "false") + "}\n}\n";
+                ", \"audience\": " + (lighting.audience ? "true" : "false") +
+                ", \"custom_count\": " + std::to_string(lighting.customCount) + ", \"custom_colors\": " + CustomColors() + "}\n}\n";
             static std::atomic<uint64_t> sequence{0};
             std::filesystem::path temp = destination;
             temp += "." + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "." +

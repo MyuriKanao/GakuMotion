@@ -76,7 +76,7 @@ namespace
         settings.mode = Mode::Wash;
         Check(Sample(settings, 0, .25).color == Sample(settings, 20, .25).color, "wash is stationary");
         const auto invalid = Sanitize({static_cast<Mode>(100), 9, NAN, INFINITY, -1});
-        Check(invalid.mode == Mode::Native && invalid.palette == 2 && invalid.strength == 1 && invalid.bpm == 120 && invalid.speed == .1f,
+        Check(invalid.mode == Mode::Native && invalid.palette == kCustomPalette && invalid.strength == 1 && invalid.bpm == 120 && invalid.speed == .1f,
             "invalid mode and non-finite parameters are bounded");
         for (double time : std::array<double, 5>{-1.0, 0.0, 1e300,
             std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()})
@@ -86,6 +86,38 @@ namespace
                 std::isfinite(cue.color[0]), "extreme time and phase keep a finite, non-strobing cue");
         }
         Check(std::isfinite(ScaleIntensity((std::numeric_limits<float>::max)(), 3)), "intensity multiplication cannot overflow");
+    }
+    void TestPalettes()
+    {
+        Check(kCustomPalette == static_cast<int>(palettes.size()) && palettes.size() >= 8, "preset list plus one custom slot");
+        for (int index = 0; index <= kCustomPalette; ++index)
+        {
+            Settings settings{Mode::Wash, index};
+            const int count = index == kCustomPalette ? settings.customCount : palettes[index].count;
+            Check(count >= 2 && count <= 5, "every palette has 2..5 colors");
+            std::set<std::array<float, 3>> seen;
+            for (int light = 0; light < 64; ++light)
+            {
+                const auto cue = Sample(settings, 0, light / 64.0);
+                Check(std::all_of(cue.color.begin(), cue.color.end(), [](float c) { return std::isfinite(c) && c >= 0 && c <= 1; }),
+                    "every palette color stays finite and in range");
+                seen.insert({cue.color[0], cue.color[1], cue.color[2]});
+            }
+            Check(seen.size() > static_cast<size_t>(count), "fixed wash spreads lights across the whole palette");
+        }
+        Settings custom{Mode::Wash, kCustomPalette};
+        custom.customCount = 2; custom.custom[0] = {1, 0, 0}; custom.custom[1] = {0, 0, 1};
+        const auto red = Sample(custom, 0, 0), blue = Sample(custom, 0, .5);
+        Check(red.color[0] == 1 && red.color[2] == 0 && blue.color[0] == 0 && blue.color[2] == 1,
+            "custom colors are used in order");
+        custom.customCount = 3; custom.custom[2] = {0, 1, 0};
+        Check(Sample(custom, 0, 2 / 3.0).color[1] == 1, "raising the custom count adds the next color");
+        auto bad = custom; bad.customCount = 9; bad.custom[0] = {NAN, -1, 4};
+        bad = Sanitize(bad);
+        Check(bad.customCount == kMaxCustomColors && bad.custom[0][0] == 1 && bad.custom[0][1] == 0 && bad.custom[0][2] == 1,
+            "custom count and non-finite/out-of-range channels are bounded");
+        Check(Sanitize(Settings{Mode::Wash, 99}).palette == kCustomPalette && Sanitize(Settings{Mode::Wash, -1}).palette == 0,
+            "palette index is bounded to presets plus custom");
     }
     void TestOwnership()
     {
@@ -203,6 +235,33 @@ namespace
         Check(loaded.Load(utf8, error) && loaded.lighting.mode == Mode::Native, "failed save preserves previous file");
         { std::ofstream out(path); out << "{\"version\":1,\"load_replacement_key\":\"\",\"live_lighting\":{\"mode\":99}}"; }
         Check(!loaded.Load(utf8, error), "malformed lighting settings are rejected");
+        saved.lighting = {Mode::Cycle, kCustomPalette, 1, 120, 1};
+        saved.lighting.customCount = 2;
+        saved.lighting.custom = {{{0.1f, 0.2f, 0.3f}, {0.123456789f, 1, 0}, {0.5f, 0.5f, 0.5f}, {0, 0, 1}}};
+        Check(saved.Save(utf8, error) && loaded.Load(utf8, error) && loaded.lighting == saved.lighting,
+            "custom palette, count and all four color slots round-trip exactly");
+        saved.lighting.palette = 7;
+        Check(saved.Save(utf8, error) && loaded.Load(utf8, error) && loaded.lighting.palette == 7, "new preset indices persist");
+        const auto stable = loaded.lighting;
+        const auto writeLighting = [&](const std::string& extra) {
+            std::ofstream out(path);
+            out << "{\"version\":1,\"load_replacement_key\":\"\",\"live_lighting\":{\"mode\":1,\"palette\":0,"
+                "\"strength\":1,\"bpm\":120,\"speed\":1" << extra << "}}";
+        };
+        writeLighting("");
+        Check(loaded.Load(utf8, error) && loaded.lighting.customCount == Settings{}.customCount &&
+            loaded.lighting.custom == Settings{}.custom, "older files without custom colors keep the defaults");
+        writeLighting(",\"custom_colors\":[[1,0,0]]");
+        Check(loaded.Load(utf8, error) && loaded.lighting.custom[0] == Rgb{1, 0, 0} && loaded.lighting.custom[1] == Settings{}.custom[1],
+            "a shorter color list overrides only the listed slots");
+        loaded.lighting = stable;
+        for (const char* extra : {",\"custom_count\":1", ",\"custom_count\":5", ",\"custom_count\":2.5", ",\"custom_count\":\"3\"",
+                 ",\"custom_colors\":[]", ",\"custom_colors\":[[1,0]]", ",\"custom_colors\":[[1,0,2]]", ",\"custom_colors\":[[1,0,-0.1]]",
+                 ",\"custom_colors\":[[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1]]", ",\"custom_colors\":{\"0\":1}", ",\"palette\":9"})
+        {
+            writeLighting(extra);
+            Check(!loaded.Load(utf8, error) && loaded.lighting == stable, "invalid custom palette data is rejected without partial changes");
+        }
         std::filesystem::remove(path);
         std::filesystem::remove(directory / "stage.json.bak");
         std::filesystem::remove(directory);
@@ -210,7 +269,7 @@ namespace
 }
 int main()
 {
-    TestNativeBaseline(); TestSampler(); TestOwnership(); TestFailuresAndTransitions(); TestManagerLifecycle(); TestCatalogAndSettings();
+    TestNativeBaseline(); TestSampler(); TestPalettes(); TestOwnership(); TestFailuresAndTransitions(); TestManagerLifecycle(); TestCatalogAndSettings();
     std::printf("Stage lighting synthetic contracts: %d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }

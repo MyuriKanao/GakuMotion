@@ -77,6 +77,7 @@ receiver 选择规则：配套舞台有唯一 receiver 时沿用旧路径，源�
 - 根节点结构和组件分布来自本地缓存的 `tln_live_all-001/012/019` 只读静态检查；类型和方法签名来自 v31 静态元数据（SHA-256 `0951bf01…b29869`）。未复制游戏代码或导出资产。
 - 只抽查了 3 首通用 Live。个别歌曲的根结构可能不同，此时对应根会被排除并在状态栏计数，不会错误显示演员或镜头。
 - 试镜 03 / 04 场景没有配对的原生演出时间轴，这次改动不会让它们的大屏出现内容；那需要另外接入 `InGame3DManager.PlayMovieMonitor` 一类的试镜屏幕链路。
+- 原生模板只在当前活动场景等于模板配套舞台时启动。配套舞台由模板自动载入，不在“下次摄影背景”列表里。进入摄影后若用游戏原生功能切换背景或横竖屏，活动场景会回到 `Photography`，需要重新进入。会话状态变化会写一行 `[GakuMotion][NativeLive] state ...` 到 `gakuloader.log`。
 - 场景包内的光照贴图 / 光照探针 / RenderSettings 属于环境包本身，本功能不改写。
 - CRI 背景视频（例如 Live 012 的 `BackGround/CRIMovie`）不接管。
 - 合成测试在 Unity 边界使用替身对象，不能证明真实 PlayableGraph、Volume 混合、CanvasRenderTexture、人群 GPU 渲染的效果。
