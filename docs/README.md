@@ -12,6 +12,7 @@
 | 排查面板不可用、导入或播放问题 | [常见问题](TROUBLESHOOTING.md) |
 | 准备工具链与查看当前构建入口 | [构建指南](../BUILD_NOTES.md) |
 | 理解宿主、导入器、运行时与共享核心 | [架构](ARCHITECTURE.md) |
+| 扩展摄影舞台、程序化灯光与验证边界 | [舞台与灯光](STAGE_LIGHTING.md) |
 | 读写动作与镜头文件 | [动作文件格式](formats/ACTION_FORMATS.md) |
 | 开发宿主插件 | [GakuLoader 插件指南](https://github.com/crested-ezios/GakuLoader/blob/main/docs/PLUGIN_DEVELOPMENT.md) |
 | 查看组件许可 | [第三方通知](../THIRD_PARTY_NOTICES.md) |

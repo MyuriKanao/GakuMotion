@@ -715,6 +715,10 @@ namespace GakuMotion
 						// A stale visual-settings snapshot cannot overwrite the separately
 						// saved load-time selection from the dedicated control.
 						settings.loadReplacementKey = stageManager.GetLoadReplacementKey();
+						settings.liveLighting = stage_light::Sanitize(settings.liveLighting);
+						if (settings.liveLighting != stageManager.settings.liveLighting &&
+							!SaveStageLightingSettings(settings.liveLighting))
+							settings.liveLighting = stageManager.settings.liveLighting;
 						stageManager.ApplySettings(settings);
 					}
 					break;
@@ -1389,6 +1393,7 @@ namespace GakuMotion
 			const bool loaded = exists && !ec && saved.Load(path, error);
 			StageSettings settings = stageManager.settings;
 			settings.loadReplacementKey = loaded ? saved.key : "";
+			settings.liveLighting = loaded ? saved.lighting : stage_light::Settings{};
 			stageManager.ApplySettings(settings);
 			if (ec || (exists && !loaded))
 			{
@@ -1408,7 +1413,7 @@ namespace GakuMotion
 				stageLoadNotice = "舞台选择未保存：选项无效或配置目录尚未就绪";
 				return false;
 			}
-			stage_load::Settings saved{key};
+			stage_load::Settings saved{key, stageManager.settings.liveLighting};
 			std::string error;
 			if (!saved.Save(configRoot + "/stage.json", error))
 			{
@@ -1422,6 +1427,21 @@ namespace GakuMotion
 			stageLoadNotice = key.empty() ? "已记住恢复原生背景；下次进入偶像摄影时生效" :
 				"舞台选择已保存；下次进入偶像摄影时生效（跨区域和重启保留）";
 			LogInfo("[GakuMotion][StageLoad] saved next Photography key=" + (key.empty() ? std::string("native") : key));
+			return true;
+		}
+
+		bool SaveStageLightingSettings(const stage_light::Settings& lighting)
+		{
+			std::string error;
+			stage_load::Settings saved{stageManager.GetLoadReplacementKey(), lighting};
+			if (configRoot.empty() || !saved.Save(configRoot + "/stage.json", error))
+			{
+				stageLoadNotice = "灯光设置保存失败，保留原设置: " + error;
+				LogWarn("[GakuMotion][StageLight] settings save failed: " + error);
+				return false;
+			}
+			stageLoadNotice = "舞台与灯光设置已保存";
+			stageStoppedByTransport = false;
 			return true;
 		}
 
@@ -2914,6 +2934,7 @@ namespace GakuMotion
 			ctx.stageMountedKey = stageManager.mountedStageKey;
 			ctx.stageStatusNotice = stageManager.statusNotice;
 			ctx.stageLoadNotice = stageLoadNotice;
+			ctx.stageLightingNotice = stageManager.lightingStatusNotice;
 			ctx.fnSetStageLoadReplacement = [](void* self, const char* key)
 			{
 				static_cast<Core*>(self)->QueueStageLoadReplacement(key ? key : "");

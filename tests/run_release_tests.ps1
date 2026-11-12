@@ -147,6 +147,24 @@ if ($LASTEXITCODE -ne 0) { throw "Stage-load detour test build failed (exit=$LAS
 & $stageLoadExe
 if ($LASTEXITCODE -ne 0) { throw "Stage-load detour tests failed (exit=$LASTEXITCODE)" }
 
+$stageLightExe = Join-Path $buildDir 'test_stage_lighting.exe'
+$stageLightArgs = @('-nologo', '/std:c++20', '/utf-8', '/EHsc', '/MT', '/W4',
+    "/I$srcDir", "/I$incDir", "/I$KineTextureInclude", (Join-Path $PSScriptRoot 'test_stage_lighting.cpp'),
+    "/Fe:$stageLightExe", "/Fo:$(Join-Path $objDir 'test_stage_lighting.obj')")
+& $compiler @stageLightArgs
+if ($LASTEXITCODE -ne 0) { throw "Stage-lighting contract build failed (exit=$LASTEXITCODE)" }
+& $stageLightExe
+if ($LASTEXITCODE -ne 0) { throw "Stage-lighting contract tests failed (exit=$LASTEXITCODE)" }
+
+$stageLightRuntimeExe = Join-Path $buildDir 'test_stage_lighting_runtime.exe'
+$stageLightRuntimeArgs = @('-nologo', '/std:c++20', '/utf-8', '/EHsc', '/MT', '/W4',
+    "/I$srcDir", "/I$incDir", (Join-Path $PSScriptRoot 'test_stage_lighting_runtime.cpp'),
+    "/Fe:$stageLightRuntimeExe", "/Fo:$(Join-Path $objDir 'test_stage_lighting_runtime.obj')")
+& $compiler @stageLightRuntimeArgs
+if ($LASTEXITCODE -ne 0) { throw "Stage-lighting adapter build failed (exit=$LASTEXITCODE)" }
+& $stageLightRuntimeExe
+if ($LASTEXITCODE -ne 0) { throw "Stage-lighting adapter tests failed (exit=$LASTEXITCODE)" }
+
 Write-Host "=== [3/3] ImGui overlay skeleton syntax check ===" -ForegroundColor Cyan
 if (Test-Path (Join-Path $ImGuiInclude 'imgui.h')) {
     $syntaxArgs = @('-nologo', '/std:c++20', '/utf-8', '/Zs', '/W3', '/EHsc', '/DGKMOTION_ENABLE_IMGUI',

@@ -327,6 +327,7 @@ namespace
 
 	#include "test_timing_gui.hpp"
 	#include "test_responsive_layout.hpp"
+	#include "test_stage_gui.hpp"
 
 	void TestCameraPursuitControls(const std::filesystem::path& root)
 	{
@@ -488,7 +489,7 @@ void ImGuiTestEngineHook_ItemAdd(ImGuiContext* context, ImGuiID id, const ImRect
 	// This vendored BeginCombo emits ItemAdd but no ItemInfo. Identify its real
 	// submitted item by the current ID stack without changing production code.
 	if (context->CurrentWindow && !context->CurrentWindow->IDStack.empty())
-		for (const char* label : {"##play_mode", "##playback_speed", "##camera_quick_mode", "##physics_engine_select", "##drive_actor_combo", "##camera_mode", "跟随部位"})
+		for (const char* label : {"##play_mode", "##playback_speed", "##camera_quick_mode", "##physics_engine_select", "##drive_actor_combo", "##camera_mode", "跟随部位", "灯光效果", "灯光配色", "下次摄影背景"})
 			if (ImHashStr(label, 0, context->CurrentWindow->IDStack.back()) == id) items[id].label = label;
 }
 void ImGuiTestEngineHook_ItemInfo(ImGuiContext*, ImGuiID id, const char* label, ImGuiItemStatusFlags status)
@@ -522,6 +523,7 @@ int main(int argc, char** argv)
 	GImGui->TestEngineHookItems = true;
 	TestPlaybackAndTrackTimingGui(root);
 	TestResponsiveLibraryAndStageLayout(root);
+	TestStageLightingGui(root);
 	TestCameraPursuitControls(root);
 	TestCameraFollowTargetControls(root);
 	TestUnifiedCameraModeControls(root);

@@ -23,7 +23,7 @@ GakuMotion 是运行在 GakuLoader 插件宿主之上的游戏原生演出扩展
 | **Facial** | 面部表情、眼动及相关表现 |
 | **Camera** | VMD 原生运镜与角色跟随运镜 |
 | **Audio** | 同步播放 16-bit PCM WAV 音频 |
-| **Stage** | 部分场景，以及自定义舞台环境与场景表现 |
+| **Stage** | 16 个实验摄影场景入口，以及可恢复的真实灯/体积光束效果（[说明与验收边界](docs/STAGE_LIGHTING.md)） |
 
 GakuMotion 目前处于 Developer Preview 阶段。
 

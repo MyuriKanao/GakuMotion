@@ -120,6 +120,7 @@ namespace GakuMotion
 		std::string stageMountedKey;
 		std::string stageStatusNotice;
 		std::string stageLoadNotice;
+		std::string stageLightingNotice;
 		void (*fnSetStageLoadReplacement)(void*, const char*){nullptr};
 		void (*fnSetStageSettings)(void*, const StageSettings&){nullptr};
 		void (*fnSetStagePreset)(void*, int){nullptr};
