@@ -30,9 +30,13 @@ namespace NativeLiveRuntime
     inline bool metadataReady{};
     inline std::string error, catalogNotice;
 
+    // Optional: marks a Live's master timeline when choosing the tempo map.
+    inline void* directorControlClass{};
+    inline bool IsDirectorControl(void* track) { return directorControlClass && r::Is(track, directorControlClass); }
     inline void Resolve(HMODULE module)
     {
         metadataReady = false;
+        directorControlClass = nullptr;
         nullableLookupClass=nullptr;
         try
         {
@@ -50,6 +54,7 @@ namespace NativeLiveRuntime
             equipmentTrackClass = campus("Campus.Live.Equipment.Timeline", "LiveEquipmentTrackBase");
             equipmentClipClass = campus("Campus.Live.Equipment.Timeline", "LiveEquipmentClipBase");
             bpmClipClass = campus("Campus.Timeline", "CampusBpmTimelineAsset"); groupClass = timeline("GroupTrack");
+            directorControlClass = campus("Campus.Timeline", "CampusDirectorControlTrack");
             equipmentClass = campus("Campus.Live.Equipment", "LiveEquipmentController");
             receiverClass = campus("Campus.Live.Equipment", "LiveEquipmentReceiver");
             environmentClass = campus("Campus.Live.Equipment", "EnvironmentBase");

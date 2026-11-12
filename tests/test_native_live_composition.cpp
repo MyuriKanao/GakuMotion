@@ -69,7 +69,11 @@ namespace
             !Decide({Track::Crowd, true, true, Binding::Admitted, Audience}, Rig | Environment | Monitor), "crowd follows audience layer");
         Check(Decide({Track::Animation, true, true, Binding::Admitted, Monitor}, All) == Monitor, "screen animation follows the bound root");
         Check(Decide({Track::Animation, true, true, Binding::Admitted, Rig | Environment}, All) == Rig, "rig wins for mixed rig roots");
-        Check(!Decide({Track::Animation, true, false, Binding::Admitted, Rig}, All), "infinite/recorded animation clips are never cloned");
+        Check(Decide({Track::Animation, false, false, Binding::Admitted, Monitor}, All) == Monitor,
+            "infinite-mode animation (recorded clip, no timeline clips) follows its bound root");
+        Check(!Decide({Track::Animation, false, false, Binding::Hidden}, All) && !Decide({Track::Animation, false, false, Binding::None}, All) &&
+            !Decide({Track::Animation, false, false, Binding::Admitted, Monitor}, Rig | Environment | Audience),
+            "infinite-mode animation on a hidden, unbound or disabled target is dropped");
         Check(!Decide({Track::Animation, false, true, Binding::Admitted, Rig}, All), "animation with foreign clip assets is never cloned");
         Check(!Decide({Track::Animation, true, true, Binding::Foreign, Rig}, All), "bindings outside the owned source are dropped");
         Check(!Decide({Track::Animation, true, true, Binding::None}, All), "unbound root animation is dropped");

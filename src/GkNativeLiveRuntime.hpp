@@ -13,6 +13,7 @@
 #include "GkNativeLiveAuxiliaryClone.hpp"
 #include "GkNativeLiveCompositionRuntime.hpp"
 #include "GkNativeLiveAuxiliaryRuntime.hpp"
+#include "GkNativeLivePlacementRuntime.hpp"
 #include "GkNativeLiveGraphRuntime.hpp"
 #include "GkNativeLiveTempoRuntime.hpp"
 namespace NativeLiveRuntime
@@ -46,7 +47,12 @@ namespace NativeLiveRuntime
             r::Require(StageLightingRuntime::Restore(), "procedural lighting restoration pending");
             engine = std::make_unique<Engine>(); engine->request = request; engine->source.Begin(request); return true;
         }
-        catch (const std::exception& problem) { error = problem.what(); return false; }
+        catch (const std::exception& problem)
+        {
+            const char* step = !engine ? "准备" : engine->source.step == SourceScene::Step::Empty ? "缓存检查" : "源场景请求";
+            error = std::string("载入开始（") + step + "）：" + problem.what();
+            return false;
+        }
     }
     inline live::Operation PollLoad()
     {
@@ -58,12 +64,33 @@ namespace NativeLiveRuntime
             { if (result == live::Operation::Failed) error = "native source load faulted or canceled"; return result; }
             if (!engine->built)
             {
-                engine->graph.Build(engine->request, engine->source.scene, engine->source.originalRootStates);
+                // Reacquire the selected Photography actor from a typed scene
+                // snapshot. Neither a cached actor pointer nor Camera.main is
+                // sufficient proof of the Photography coordinate origin.
+                auxiliary::bindings.Resolve(); r::Arena roots;
+                void* selected = GakuMotion::Core::Instance().player.controller.targetActor;
+                bool found = false;
+                for (void* klass : {auxiliary::bindings.actor, auxiliary::bindings.virtualActor})
+                {
+                    const auto actors = Components(klass, engine->request.owner.sceneHandle, roots);
+                    found |= selected && std::find(actors.begin(), actors.end(), selected) != actors.end();
+                }
+                if (!found) return live::Operation::Pending;
+                auto& placement = engine->graph.placement; placement.Resolve();
+                const auto origin = placement.Position(selected, roots);
+                engine->graph.Build(engine->request, engine->source.scene, engine->source.originalRootStates, origin);
+                GakuMotion::host::Info("[GakuMotion][NativeLive] stage origin aligned offset=(%.3f,%.3f,%.3f) stage_scene=%d source_scene=%d",
+                    placement.offset[0], placement.offset[1], placement.offset[2], engine->request.stageScene, engine->source.scene);
                 BuildTemplateBeats(engine->graph,engine->beats);engine->built = true; error.clear();
             }
             return live::Operation::Ready;
         }
-        catch (const std::exception& problem) { error = problem.what(); return live::Operation::Failed; }
+        catch (const std::exception& problem)
+        {
+            const bool loaded = engine && engine->source.step == SourceScene::Step::Ready;
+            error = std::string(loaded ? "演出装配：" : "源场景载入：") + problem.what();
+            return live::Operation::Failed;
+        }
     }
     inline bool Sample(double time)
     {
@@ -125,7 +152,7 @@ namespace NativeLiveRuntime
         if (!song) return "原生灯光模板目录待就绪；播放曲目仍由曲库选择";
         if (active != song->stage)
             return "原生模板待机：当前舞台 " + (active.empty() ? std::string("未知") : active) + "，模板需要 " + song->stage +
-                "。请退出偶像摄影再进入，插件会自动载入配套舞台；原生切换背景或横竖屏会回到摄影场景";
+                "。请退出偶像摄影再进入，插件会自动载入配套舞台";
         return "原生模板待机：配套舞台已载入，等待摄影凭据或曲库节拍就绪";
     }
     inline void PollRestoration(bool allowed, const light::Settings& settings)

@@ -78,6 +78,7 @@ SURFACES = [
     ('campus-submodule.Runtime.dll', 'Campus.Live.Equipment.Timeline', 'LiveEquipmentClipBase', 'get_UseBpm/0'),
     ('campus-submodule.Runtime.dll', 'Campus.Timeline', 'CampusBpmTimelineTrack', ''),
     ('campus-submodule.Runtime.dll', 'Campus.Timeline', 'CampusBpmTimelineAsset', ''),
+    ('campus-submodule.Runtime.dll', 'Campus.Timeline', 'CampusDirectorControlTrack', ''),
     ('UnityEngine.JSONSerializeModule.dll', 'UnityEngine', 'JsonUtility', 'ToJson/2s FromJsonInternal/3s'),
     ('Assembly-CSharp.dll', 'Campus.Common.Master', 'MasterManager', 'get_ProduceLiveMaster/0s'),
     ('Assembly-CSharp.dll', 'Campus.Common.Master', 'ProduceLiveMaster', 'GetAllWithSortByKey/1'),

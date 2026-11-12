@@ -107,7 +107,21 @@ namespace NativeLiveRuntime
         void* text = r::String(key, roots); void* args[]{text};
         void* array = roots.Keep(r::Call(dependencies, nullptr, args));
         std::set<std::string> names{key};
-        for (void* item : r::Items(array)) names.insert(r::Text(item, GakuMotion::native_live::kMaxBundleNameLength));
+        // This client's name arrays can hold entries that are not plain
+        // System.String (the global list reports names=0). Those are counted,
+        // never guessed; an unreadable dependency still fails closed below.
+        size_t unreadable{}, total{};
+        std::string firstClass;
+        for (void* item : r::Items(array))
+        {
+            ++total;
+            auto name = r::TryText(item, GakuMotion::native_live::kMaxBundleNameLength);
+            if (name && !name->empty() && name->find('\0') == std::string::npos) names.insert(std::move(*name));
+            else if (!unreadable++) firstClass = r::ClassOf(item);
+        }
+        if (unreadable)
+            throw r::Failure("native dependency name is not a readable string (" + std::to_string(unreadable) + "/" +
+                std::to_string(total) + ", first: " + firstClass + "); cache state cannot be proven");
         void* typedArray = roots.Keep(arrayNew(stringClass, names.size()));
         r::Require(typedArray != nullptr, "local cache query array unavailable");
         int index = 0;

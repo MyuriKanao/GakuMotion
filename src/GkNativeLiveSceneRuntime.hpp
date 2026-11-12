@@ -79,11 +79,9 @@ namespace NativeLiveRuntime
             const auto items = r::Items(paths, 16);
             r::Require(items.size() == 1, "native source scene is ambiguous");
             path = r::Text(items.front(), 1024);
-            r::Require(path.ends_with(".unity"), "native source scene path unavailable");
-            const auto slash = path.find_last_of("/\\");
-            const auto start = slash == std::string::npos ? 0 : slash + 1;
-            sceneName = path.substr(start, path.size() - start - 6);
-            r::Require(!sceneName.empty(), "native source scene name unavailable");
+            const auto name = GakuMotion::native_live::SceneNameFromPath(path);
+            if (!name) throw r::Failure("native source scene path unusable: \"" + path + "\"");
+            sceneName = *name;
             // A scene already loaded by the game is never adopted or unloaded.
             for (int handle : Scenes())
             {

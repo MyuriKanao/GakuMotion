@@ -24,11 +24,20 @@
         }
         return result;
     }
+    // Diagnostic only: "namespace.name" of a managed object's class.
+    inline std::string ClassOf(void* value)
+    {
+        if (!value) return "null";
+        void* actual = g_faceRuntime.objectClass ? g_faceRuntime.objectClass(value) : nullptr;
+        const char* name = actual && className ? className(actual) : nullptr;
+        const char* space = actual && classNamespace ? classNamespace(actual) : nullptr;
+        return std::string(space ? space : "?") + "." + (name ? name : "?");
+    }
     inline std::string Text(void* text, size_t limit = 512)
     {
         Require(text != nullptr, "native string result missing");
-        Require(managedStringClass && g_faceRuntime.objectClass && g_faceRuntime.objectClass(text) == managedStringClass,
-            "native string result has unexpected type");
+        if (!managedStringClass || !g_faceRuntime.objectClass || g_faceRuntime.objectClass(text) != managedStringClass)
+            throw Failure("native string result has unexpected type " + ClassOf(text));
         Require(stringLength && stringChars, "native string API unavailable");
         if (auto result=TryText(text,limit)) return *result;
         throw Failure("native string invalid or exceeds limit (length="+std::to_string(stringLength(text))+", limit="+std::to_string(limit)+")");

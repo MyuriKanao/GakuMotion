@@ -125,6 +125,8 @@ namespace GakuMotion
 		std::string stageLightingNotice;
 		std::string nativeLiveCatalogNotice;
 		void (*fnSetStageLoadReplacement)(void*, const char*){nullptr};
+		// Saves only the Live lighting preference; usable outside Photography.
+		void (*fnSetLiveLightingPreference)(void*, const stage_light::Settings&){nullptr};
 		void (*fnSetStageSettings)(void*, const StageSettings&){nullptr};
 		void (*fnSetStagePreset)(void*, int){nullptr};
 		void (*fnToggleStageCandidate)(void*, int, bool){nullptr};
@@ -185,6 +187,7 @@ namespace GakuMotion
 	void DrawLibraryPage(GuiOverlay& overlay, const GuiContext& ctx);
 	void DrawStagePage(GuiOverlay& overlay, const GuiContext& ctx);
 	void DrawStageLoadReplacementControl(const GuiContext& ctx);
+	void DrawLiveLightingPreference(const GuiContext& ctx);
 
 	class GuiOverlay
 	{
@@ -354,6 +357,9 @@ namespace GakuMotion
 					ImGui::Spacing();
 					if (!ctx.stageSettings.loadReplacementKey.empty())
 						ImGui::TextWrapped("已保留实验舞台选择；可在下方开发者选项中修改或恢复原生背景。");
+					// The lighting template picks the next Photography stage, so it
+					// must be choosable before entering Photography.
+					DrawLiveLightingPreference(ctx);
 					if (ImGui::CollapsingHeader("开发者选项"))
 					{
 						ImGui::Checkbox("开发者模式", &developerMode);

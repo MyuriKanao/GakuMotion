@@ -50,18 +50,27 @@ namespace NativeLiveRuntime
             return copy;
         }
         // pairs: optional action-scoped (original, copy) list for binding copy.
-        void Build(void* source, std::vector<std::pair<void*, void*>>* pairs = nullptr)
+        // tempo: optional BPM track of another timeline in the same Live (its
+        // master). It is cloned first so its mixer precedes the equipment ones.
+        void Build(void* source, std::vector<std::pair<void*, void*>>* pairs = nullptr, void* tempo = nullptr)
         {
             r::Require(!asset && r::Is(source, timelineClass), "source is not an unused native timeline");
             r::Arena roots;
             void* type = r::TypeObject(timelineClass, roots); void* args[]{type}; asset = r::Root(r::Call(createAsset, nullptr, args));
             const auto tracks = r::Items(roots.Keep(r::Call(flattenedTracks, source)), 4096);
+            if (tempo)
+            {
+                r::Require(r::Is(tempo, bpmClass) && std::find(tracks.begin(), tracks.end(), tempo) == tracks.end(),
+                    "external native tempo track is not a foreign BPM track");
+                void* addArgs[]{CopyTrack(tempo, roots)}; r::Call(addTrack, asset.Get(), addArgs);
+            }
             for (void* track : tracks) if (Allowed(track))
             {
                 r::Require(!copies.contains(track), "duplicate native flattened track");
                 copies.emplace(track, CopyTrack(track, roots));
             }
-            r::Require(equipmentTracks > 0 && clips > 0 && (!needsBpm || bpmTracks > 0), "native equipment/BPM tracks missing or muted");
+            r::Require(equipmentTracks > 0 && clips > 0, "native equipment tracks missing or muted");
+            r::Require(!needsBpm || bpmTracks > 0, "BPM-driven native light clips have no unique BPM track (equipment or master timeline)");
             for (void* track : tracks)
             {
                 const auto found = copies.find(track); if (found == copies.end()) continue;
