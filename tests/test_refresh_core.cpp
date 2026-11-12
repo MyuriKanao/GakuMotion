@@ -2407,7 +2407,136 @@ static void TestInitialPosition()
 	core.ProcessPendingGuiCommands();
 	Check(restarted.LoadInitialPosition() && near(restarted.player.controller.initialPositionOffset, {0, 0, 0}),
 	      "saved three-axis reset persists across restart");
+
+	BeginTest("initial_yaw_persistence");
+	core.QueueInitialYaw(30.0f);
+	core.QueueInitialYaw(-135.0f);
+	core.QueueGui({Core::GuiAction::SaveInitialPosition});
+	core.ProcessPendingGuiCommands();
+	Check(core.player.controller.initialYawDegrees == -135.0f, "adjacent yaw updates coalesce to the final value");
+	Check(restarted.LoadInitialPosition() && restarted.player.controller.initialYawDegrees == -135.0f,
+	      "saved facing loads with the initial position");
+	WriteTextFile(core.initialPositionPath, R"({"version":1,"space":"world","offset_m":[0,0,0]})");
+	restarted.player.controller.SetInitialYaw(0.0f);
+	Check(restarted.LoadInitialPosition() && restarted.player.controller.initialYawDegrees == 0.0f,
+	      "files written before facing existed still load");
+	Check(IdolController::NormalizeYaw(270.0f) == -90.0f && IdolController::NormalizeYaw(-180.0f) == 180.0f &&
+	      IdolController::NormalizeYaw(540.0f) == 180.0f,
+	      "facing wraps into (-180, 180]");
+	Check(!core.player.controller.SetInitialYaw(std::numeric_limits<float>::infinity()) &&
+	      core.player.controller.initialYawDegrees == -135.0f,
+	      "nonfinite facing cannot replace a valid value");
 	fs::remove_all(root);
+}
+
+static void TestInitialYawPose()
+{
+	BeginTest("initial_yaw_turns_driven_pose");
+	const auto near = [](const Vector3& a, const Vector3& b)
+	{
+		return std::fabs(a.x - b.x) < 1e-4f && std::fabs(a.y - b.y) < 1e-4f && std::fabs(a.z - b.z) < 1e-4f;
+	};
+	MotionClip clip = MakeSmallClip();
+	clip.root_positions[0] = {0.4f, 0.0f, 0.8f};
+	IdolController controller;
+	WireControllerCallbacks(controller);
+	controller.useRestRotations = false;
+	IdolBoneBinding binding;
+	binding.actor = reinterpret_cast<void*>(0x911);
+	binding.actorTransform = reinterpret_cast<void*>(0x912);
+	binding.rootTransform = reinterpret_cast<void*>(0x913);
+	binding.bindPoseCaptured = true;
+	binding.defensivelyMuted = true;
+	binding.restRootPos = {0.0f, 0.9f, 0.0f};
+	binding.restActorPos = {2.0f, 0.0f, -1.0f};
+	binding.restActorRot = Quaternion::FromEulerDegreesXYZ(0, 90, 0);
+	binding.boneTransforms = {reinterpret_cast<void*>(0x914), reinterpret_cast<void*>(0x915)};
+	binding.restRotations = {Quaternion::Identity(), Quaternion::Identity()};
+	fake::worldPos[binding.actorTransform] = binding.restActorPos;
+	fake::worldRot[binding.actorTransform] = binding.restActorRot;
+	controller.currentBinding = binding;
+	fake::rotationCalls.clear();
+	controller.ApplyMotion(clip, 0);
+	const Vector3 hipsBefore = fake::worldPos[binding.rootTransform];
+	const auto rotationsBefore = fake::rotationCalls;
+
+	const Quaternion turn = Quaternion::FromEulerDegreesXYZ(0, 180, 0);
+	Check(controller.SetInitialYaw(180.0f), "facing turn accepted");
+	fake::rotationCalls.clear();
+	controller.ApplyMotion(clip, 0);
+	const Vector3 hipsAfter = fake::worldPos[binding.rootTransform];
+	Check(near(hipsAfter - binding.restActorPos, turn.Rotate(hipsBefore - binding.restActorPos)),
+	      "hips path turns around the actor pivot");
+	bool allTurned = fake::rotationCalls.size() == rotationsBefore.size() && !rotationsBefore.empty();
+	for (size_t i = 0; allTurned && i < rotationsBefore.size(); ++i)
+		allTurned = QuatNear(fake::rotationCalls[i].second, turn * rotationsBefore[i].second);
+	Check(allTurned, "every world bone rotation turns by the same yaw");
+	Check(QuatNear(fake::worldRot[binding.actorTransform], binding.restActorRot),
+	      "actor component and rest snapshot are not rotated");
+
+	controller.SetInitialPositionOffset({0.5f, 0.0f, 0.0f});
+	controller.ApplyMotion(clip, 0);
+	Check(near(fake::worldPos[binding.rootTransform] - hipsAfter, {0.5f, 0.0f, 0.0f}),
+	      "world XYZ placement stays in world axes after turning");
+	controller.SetInitialPositionOffset({0, 0, 0});
+	controller.SetInitialYaw(0.0f);
+	fake::rotationCalls.clear();
+	controller.ApplyMotion(clip, 0);
+	Check(near(fake::worldPos[binding.rootTransform], hipsBefore) &&
+	      QuatNear(fake::rotationCalls[0].second, rotationsBefore[0].second),
+	      "facing reset restores the untouched pose");
+
+	BeginTest("face_camera_yaw");
+	const auto yawNear = [](std::optional<float> value, float expected)
+	{
+		return value && std::fabs(*value - expected) < 1e-3f;
+	};
+	Check(yawNear(FacingYawToward(Quaternion::Identity(), {0, 0, 0}, {0, 1.4f, 3}), 0.0f),
+	      "camera already in front needs no turn");
+	Check(yawNear(FacingYawToward(Quaternion::Identity(), {0, 0, 0}, {0, 1.4f, -3}), 180.0f),
+	      "camera behind turns the dancer around");
+	Check(yawNear(FacingYawToward(Quaternion::Identity(), {0, 0, 0}, {3, 0, 0}), 90.0f),
+	      "camera on +X turns +90");
+	Check(yawNear(FacingYawToward(Quaternion::FromEulerDegreesXYZ(0, 90, 0), {1, 0, 1}, {1, 0, 4}), -90.0f),
+	      "native facing is subtracted");
+	const auto applied = FacingYawToward(Quaternion::FromEulerDegreesXYZ(0, 37, 0), {0, 0, 0}, {-2, 0, -1});
+	const Vector3 turned = (Quaternion::FromEulerDegreesXYZ(0, applied ? *applied : 0.0f, 0) *
+		Quaternion::FromEulerDegreesXYZ(0, 37, 0)).Rotate({0, 0, 1});
+	Check(applied && std::fabs(std::atan2(turned.x, turned.z) - std::atan2(-2.0f, -1.0f)) < 1e-3f,
+	      "applying the yaw makes forward point at the camera");
+	Check(!FacingYawToward(Quaternion::Identity(), {0, 0, 0}, {0, 5, 0}), "camera straight above is rejected");
+
+	{
+		Core detached;
+		Check(!detached.FaceCamera() && !detached.facingNotice.empty(),
+		      "missing actor or camera reports instead of turning");
+	}
+	// The bridge's actor pose includes the current facing correction, as the
+	// real fnActorPose does, so FaceCamera must add only the remaining delta.
+	static Vector3 cameraPosition;
+	cameraPosition = {0, 1.4f, -3};
+	Core& live = Core::Instance();
+	live.player.controller.targetActor = reinterpret_cast<void*>(0x921);
+	live.camera.fnActorPose = [](void*, Vector3& origin, Quaternion& rotation, Vector3& hips)
+	{
+		origin = {0, 0, 0};
+		rotation = Core::Instance().player.controller.InitialYawRotation();
+		hips = {0, 0.9f, 0};
+		return true;
+	};
+	live.camera.fnCameraPosition = [](Vector3& position) { position = cameraPosition; return true; };
+	live.player.controller.SetInitialYaw(0.0f);
+	Check(live.FaceCamera() && std::fabs(live.player.controller.initialYawDegrees - 180.0f) < 1e-3f,
+	      "face camera turns toward a camera behind the dancer");
+	Check(live.FaceCamera() && std::fabs(live.player.controller.initialYawDegrees - 180.0f) < 1e-3f,
+	      "repeating face camera is stable (adds the remaining delta only)");
+	cameraPosition = {3, 1.4f, 0};
+	Check(live.FaceCamera() && std::fabs(live.player.controller.initialYawDegrees - 90.0f) < 1e-3f,
+	      "a moved camera re-aims from the current facing");
+	live.player.controller.SetInitialYaw(0.0f);
+	live.player.controller.targetActor = nullptr;
+	live.camera.fnActorPose = nullptr;
+	live.camera.fnCameraPosition = nullptr;
 }
 
 static void TestLiveLightingPreferenceOutsidePhotography()
@@ -2586,6 +2715,7 @@ int main(int argc, char** argv)
  TestSecondaryPhysicsConfig();
  TestOrderedPlaybackCommands();
  TestInitialPosition();
+ TestInitialYawPose();
  TestLiveLightingPreferenceOutsidePhotography();
  TestOverrideInjection();
  TestPlayerSeekSync();

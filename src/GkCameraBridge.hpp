@@ -1385,14 +1385,27 @@ namespace CameraBridge
 			auto q = g_getWorldRotNative(root);
 			// Main playback applies XYZ to the hips world target rather than the
 			// actor component. Include it in the camera's logical scene anchor.
-			const auto placement = GakuMotion::Core::Instance().player.controller.initialPositionOffset;
-			origin = GakuMotion::Vector3{p.x, p.y, p.z} + placement;
+			const auto& controller = GakuMotion::Core::Instance().player.controller;
+			origin = GakuMotion::Vector3{p.x, p.y, p.z} + controller.initialPositionOffset;
 			hips = {h.x, h.y, h.z};
 			rotation = {q.x, q.y, q.z, q.w};
 			float norm = GakuMotion::Quaternion::Dot(rotation, rotation);
 			if (!std::isfinite(norm) || norm < 1e-8f) return false;
-			rotation = rotation.Normalized();
+			// The driven dancer faces the native facing plus the user's yaw, so
+			// VMD and follow offsets are expressed in that turned frame.
+			rotation = (controller.InitialYawRotation() * rotation.Normalized()).Normalized();
 			return GakuMotion::CameraFinite(origin) && GakuMotion::CameraFinite(hips);
+		};
+		c.fnCameraPosition = [](GakuMotion::Vector3& position)
+		{
+			if (!OnUnityThread() || !getMain) return false;
+			void* camera = getMain(nullptr);
+			if (!IsAlive(camera)) return false;
+			void* transform = HelperGetComponentTransform(camera);
+			if (!IsAlive(transform)) return false;
+			const auto p = g_getWorldPosNative(transform);
+			position = {p.x, p.y, p.z};
+			return GakuMotion::CameraFinite(position);
 		};
 		c.fnFollowTarget = [](void* actor, GakuMotion::CameraFollowTarget target, GakuMotion::Vector3& position)
 		{
