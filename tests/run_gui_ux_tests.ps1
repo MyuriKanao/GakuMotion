@@ -9,7 +9,7 @@ $taskVs = & $taskVswhere -latest -prerelease -products * -requires Microsoft.Vis
 if ([string]::IsNullOrWhiteSpace($taskVs)) { throw 'Visual Studio MSVC x64 was not found.' }
 $taskMsvc = (Get-ChildItem -LiteralPath (Join-Path $taskVs 'VC\Tools\MSVC') -Directory | Sort-Object Name | Select-Object -Last 1).FullName
 $taskSdk = @('D:\Windows Kits\10', "${env:ProgramFiles(x86)}\Windows Kits\10", "${env:ProgramFiles}\Windows Kits\10") |
-    Where-Object { Test-Path -LiteralPath (Join-Path $_ 'Include') } | Select-Object -First 1
+    Where-Object { Test-Path -LiteralPath "$_\Include" } | Select-Object -First 1
 if (-not $taskSdk) { throw 'Windows SDK was not found.' }
 $taskSdkVersion = (Get-ChildItem -LiteralPath (Join-Path $taskSdk 'Include') -Directory | Sort-Object Name | Select-Object -Last 1).Name
 $env:INCLUDE = @("$taskMsvc\include", "$taskSdk\Include\$taskSdkVersion\ucrt", "$taskSdk\Include\$taskSdkVersion\um", "$taskSdk\Include\$taskSdkVersion\shared", "$taskSdk\Include\$taskSdkVersion\winrt") -join ';'

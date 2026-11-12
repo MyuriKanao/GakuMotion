@@ -27,6 +27,7 @@
 #include "GkHotkey.hpp"
 #include "GkFaceRuntime.hpp"
 #include "GakuMotion.hpp"
+#include "test_log_stub.hpp"
 #ifdef _WIN32
 #endif
 
@@ -145,7 +146,7 @@ static void TestConfigTemplate()
 	Check(cfg.EnsureFileExists(), "首次运行生成控制文件模板");
 	cfg.Poll(0.0f, true);
 	Check(cfg.fileFound && cfg.lastError.empty(), "模板文件可被解析（含 // 注释）: " + cfg.lastError);
-	Check(cfg.selectedMotion == "test_motion", "模板默认 selected_motion = test_motion");
+	Check(cfg.selectedMotion.empty(), "模板默认不预选测试动作");
 	Check(std::fabs(cfg.playbackSpeedMultiplier - 1.0f) < 1e-4f, "模板默认 playback_speed_multiplier = 1.0");
 	Check(std::fabs(cfg.eyeWeight - 0.7f) < 1e-4f, "模板默认 eye_weight = 0.7");
 	Check(cfg.gazeMode == 0, "模板默认 gaze.mode = 0 (Auto)");
