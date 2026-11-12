@@ -321,7 +321,8 @@ namespace GakuMotion
 			BeforeQuartzExperiment,
 			StageSettings, StagePreset, ToggleStageCandidate, ScanStageCandidates,
 			MountCustomStage, UnloadCustomStage, RestoreCameraSkybox,
-			SeekFrame, StepFrame, ReloadMotion, DeleteFiles, StageLoadReplacement, SelectTarget
+			SeekFrame, StepFrame, ReloadMotion, DeleteFiles, StageLoadReplacement, SelectTarget,
+			LiveLightingPreference
 		};
 
 		std::atomic<int> guiPhysicsBackend{2};
@@ -519,12 +520,37 @@ namespace GakuMotion
 				std::lock_guard<std::mutex> lock(guiCommandMutex);
 				for (auto it = guiCommands.begin(); it != guiCommands.end();)
 				{
-					if (it->action != GuiAction::StageLoadReplacement) { ++it; continue; }
+					if (it->action != GuiAction::StageLoadReplacement && it->action != GuiAction::LiveLightingPreference)
+					{ ++it; continue; }
 					commands.push_back(std::move(*it));
 					it = guiCommands.erase(it);
 				}
 			}
-			for (const auto& command : commands) SetStageLoadReplacement(command.key);
+			for (const auto& command : commands)
+				if (command.action == GuiAction::StageLoadReplacement) SetStageLoadReplacement(command.key);
+				else SetLiveLightingPreference(command.stageSettings.liveLighting);
+		}
+
+		// The lighting template decides which stage the next Photography load
+		// uses, so it must be saved even while injection is denied (e.g. on the
+		// native background or the preparation page). This stores preferences
+		// only; it never touches Unity, playback or the current scene.
+		bool SetLiveLightingPreference(const stage_light::Settings& requested)
+		{
+			const auto lighting = stage_light::Sanitize(requested);
+			if (lighting == stageManager.settings.liveLighting) return true;
+			if (!SaveStageLightingSettings(lighting)) return false;
+			StageSettings settings = stageManager.settings;
+			settings.liveLighting = lighting;
+			stageManager.ApplySettings(settings);
+			return true;
+		}
+
+		void QueueLiveLightingPreference(const stage_light::Settings& lighting)
+		{
+			GuiCommand cmd{GuiAction::LiveLightingPreference};
+			cmd.stageSettings.liveLighting = lighting;
+			QueueGui(std::move(cmd));
 		}
 
 		bool HasPendingTargetSelection()
@@ -576,6 +602,11 @@ namespace GakuMotion
 				if (cmd.action == GuiAction::StageLoadReplacement)
 				{
 					SetStageLoadReplacement(cmd.key);
+					continue;
+				}
+				if (cmd.action == GuiAction::LiveLightingPreference)
+				{
+					SetLiveLightingPreference(cmd.stageSettings.liveLighting);
 					continue;
 				}
 				// Never replay controls queued before a scene/capture boundary.
@@ -2956,6 +2987,10 @@ namespace GakuMotion
 			ctx.fnSetStageLoadReplacement = [](void* self, const char* key)
 			{
 				static_cast<Core*>(self)->QueueStageLoadReplacement(key ? key : "");
+			};
+			ctx.fnSetLiveLightingPreference = [](void* self, const stage_light::Settings& lighting)
+			{
+				static_cast<Core*>(self)->QueueLiveLightingPreference(lighting);
 			};
 			ctx.fnSetStageSettings = [](void* self, const StageSettings& settings)
 			{

@@ -263,6 +263,7 @@
     <ClInclude Include="src\GkNativeLiveCatalogRuntime.hpp" />
     <ClInclude Include="src\GkNativeLiveClonerRuntime.hpp" />
     <ClInclude Include="src\GkNativeLiveGraphRuntime.hpp" />
+    <ClInclude Include="src\GkNativeLivePlacementRuntime.hpp" />
     <ClInclude Include="src\GkNativeLiveHooksRuntime.hpp" />
     <ClInclude Include="src\GkNativeLiveMaterialsRuntime.hpp" />
     <ClInclude Include="src\GkNativeLiveObjectsRuntime.hpp" />

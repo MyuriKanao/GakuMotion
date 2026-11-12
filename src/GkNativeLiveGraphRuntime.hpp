@@ -9,6 +9,7 @@ namespace NativeLiveRuntime
         NativeSnapshot snapshot;
         SourceComposition composition;
         AuxiliaryGraph auxiliary;
+        StagePlacement placement;
         ComponentId receiverIdentity;
         double duration{}, offset{}, lastTime{-1};
         int lastFrame{INT_MIN}, equipmentBindings{};
@@ -75,13 +76,46 @@ namespace NativeLiveRuntime
             }
             return result;
         }
-        void Build(const GakuMotion::native_live::Request& request, int sourceScene, const std::map<int, bool>& sourceRoots = {})
+        // BPM-driven light clips need the Live's tempo map. The equipment
+        // timeline's own BPM track is kept; otherwise the master timeline's is
+        // cloned. Only metadata is read: the master director is never played.
+        void* TempoTrack(void* equipmentTimeline, int sourceScene, r::Arena& roots)
+        {
+            auto scan = [&](void* value, bool& master) {
+                std::vector<void*> found;
+                for (void* track : r::Items(roots.Keep(r::Call(flattenedTracks, value)), 4096))
+                {
+                    if (IsDirectorControl(track)) master = true;
+                    if (r::Is(track, bpmClass) && !r::Read<bool>(mutedHierarchy, track)) found.push_back(track);
+                }
+                return found;
+            };
+            bool ownMaster{};
+            if (!scan(equipmentTimeline, ownMaster).empty()) return nullptr;
+            std::vector<GakuMotion::native_live::TempoCandidate> candidates;
+            std::vector<void*> first;
+            std::set<void*> seen{equipmentTimeline};
+            for (void* candidate : Components(directorClass, sourceScene, roots))
+            {
+                void* timeline = roots.Keep(r::Call(getAsset, candidate));
+                if (!r::Is(timeline, timelineClass) || !seen.insert(timeline).second) continue;
+                bool master{};
+                const auto found = scan(timeline, master);
+                candidates.push_back({found.size(), master});
+                first.push_back(found.empty() ? nullptr : found.front());
+            }
+            const int index = GakuMotion::native_live::TempoSource(0, candidates);
+            return index < 0 ? nullptr : first[static_cast<size_t>(index)];
+        }
+        void Build(const GakuMotion::native_live::Request& request, int sourceScene, const std::map<int, bool>& sourceRoots = {},
+            const std::optional<StagePlacement::Vec3>& photographyOrigin = {})
         {
             r::Arena roots;
             receiver = r::Root(SelectReceiver(request, sourceScene, sourceRoots, roots));
             receiverIdentity = Identity(receiver.Get(), roots);
             std::vector<std::pair<void*, void*>> pairs;
-            clone.Build(SelectTimeline(sourceScene, roots), &pairs);
+            void* timeline = SelectTimeline(sourceScene, roots);
+            clone.Build(timeline, &pairs, TempoTrack(timeline, sourceScene, roots));
             r::Set(setFixedDuration, clone.asset.Get(), duration); r::Set(setDurationMode, clone.asset.Get(), fixedMode);
             // EquipmentValue targets are only active when the source rig is shown.
             const auto targets = sourceReceiver ? EquipmentTargets(pairs, sourceScene, roots) : decltype(pairs){};
@@ -89,6 +123,7 @@ namespace NativeLiveRuntime
             // source scene is hidden and unloaded on release.
             snapshot.Capture(request.stageScene);
             auxiliary.Build(composition);
+            if (photographyOrigin) placement.Apply(request.stageScene, sourceScene, *photographyOrigin);
             composition.Activate(auxiliary.lift);
             auxiliary.lift.clear();
             auxiliary.Start();
@@ -154,6 +189,7 @@ namespace NativeLiveRuntime
             // profile that is about to be destroyed), then stop the hosted
             // directors, then restore the stage so no source rig overwrites it.
             if (!composition.Hide() || !auxiliary.Stop()) return false;
+            if (!placement.Restore()) return false;
             if (!snapshot.Restore()) return false;
             frame_hooks::controllerId.store(0); frame_hooks::receiverId.store(0);
             if (!composition.Release()) return false;

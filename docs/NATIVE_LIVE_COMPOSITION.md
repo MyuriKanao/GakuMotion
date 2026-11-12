@@ -37,7 +37,15 @@ receiver 选择规则：配套舞台有唯一 receiver 时沿用旧路径，源�
 
 `MasterTimeline/Light` 这类无其他组件的子 director 会被单独移到根级显示，它的父节点（Live 控制器、镜头、音频）继续隐藏。
 
-无限 / 录制 AnimationClip、绑定到隐藏对象或场景外对象的轨道、未知轨道类型一律跳过。
+绑定到隐藏对象或场景外对象的轨道、未知轨道类型一律跳过。
+
+AnimationTrack 的无限模式（只有一条录制 clip、没有 TimelineClip）按它绑定的根准入，子覆盖轨跟随父轨。抽查的三首 Live 里，大屏的 UV 动画是这种轨：`all-012_Monitor` 的 6 条根轨分别绑定 Q1 / Q2 / R1 / R2 / R3 / S1 贴片，各带 img / col / scale / spd / offset 子轨（已逐条核对绑定）。灯光时间轴里的动画轨也大多是这种轨（`all-001_Light` 有 87 条）；它们主要绑定 RealLight 和 DecoLight，这是按 director 绑定数量对应推断的，没有逐条核对。录制 clip 只读共享，不复制也不修改。
+
+### 节拍图
+
+设备 clip 多数按拍（`_useBpm=1`），需要一条 `CampusBpmTimelineTrack` 提供 BPM 曲线。旧式舞台把它放在设备时间轴里；抽查的 `tln_live_all-001/012/019` 设备时间轴只有 `CampusBpmMarkerTrack`，BPM 轨只在主时间轴（含 `CampusDirectorControlTrack` 的那条）里，Live 001 的 Light 时间轴另有一条。
+
+设备时间轴自带未静音的 BPM 轨时照旧使用。没有时，从同一源场景其他 director 的时间轴里选：优先主时间轴；主时间轴有且只有一条 BPM 轨才采用，多条或多个主时间轴都算歧义。没有主时间轴时，只有唯一一条其他时间轴的唯一 BPM 轨才采用。选中的轨被克隆到自有时间轴最前面，主时间轴和它的 director 只读、不播放、不换资产。找不到唯一来源时会话失败，不猜。
 
 ### 时钟与顺序
 
@@ -77,7 +85,7 @@ receiver 选择规则：配套舞台有唯一 receiver 时沿用旧路径，源�
 - 根节点结构和组件分布来自本地缓存的 `tln_live_all-001/012/019` 只读静态检查；类型和方法签名来自 v31 静态元数据（SHA-256 `0951bf01…b29869`）。未复制游戏代码或导出资产。
 - 只抽查了 3 首通用 Live。个别歌曲的根结构可能不同，此时对应根会被排除并在状态栏计数，不会错误显示演员或镜头。
 - 试镜 03 / 04 场景没有配对的原生演出时间轴，这次改动不会让它们的大屏出现内容；那需要另外接入 `InGame3DManager.PlayMovieMonitor` 一类的试镜屏幕链路。
-- 原生模板只在当前活动场景等于模板配套舞台时启动。配套舞台由模板自动载入，不在“下次摄影背景”列表里。进入摄影后若用游戏原生功能切换背景或横竖屏，活动场景会回到 `Photography`，需要重新进入。会话状态变化会写一行 `[GakuMotion][NativeLive] state ...` 到 `gakuloader.log`。
+- 原生模板只在当前活动场景等于模板配套舞台时启动。配套舞台由模板自动载入，不在“下次摄影背景”列表里。在偶像摄影外（例如原生背景或准备页）面板会显示“Live 舞台灯光（下次进入偶像摄影时生效）”，在那里选模板会立即保存，下次进入直接载入配套舞台；在偶像摄影内改选模板则需退出再进入一次。旧版本在摄影外丢弃灯光修改，导致要“进入、再切换一次”才生效。会话状态变化会写一行 `[GakuMotion][NativeLive] state ...` 到 `gakuloader.log`。
 - 场景包内的光照贴图 / 光照探针 / RenderSettings 属于环境包本身，本功能不改写。
 - CRI 背景视频（例如 Live 012 的 `BackGround/CRIMovie`）不接管。
 - 合成测试在 Unity 边界使用替身对象，不能证明真实 PlayableGraph、Volume 混合、CanvasRenderTexture、人群 GPU 渲染的效果。

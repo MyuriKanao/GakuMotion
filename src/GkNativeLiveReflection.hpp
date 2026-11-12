@@ -171,7 +171,7 @@ namespace NativeLiveRuntime::reflection
         Require(header>=sizeof(void*)*2 && header<=256 && header%alignof(void*)==0 &&
             arrayElementSize(g_faceRuntime.objectClass(array))==sizeof(void*), "native reference array layout mismatch");
         auto values = reinterpret_cast<void**>(static_cast<char*>(array) + header);
-        return {values, values + count};
+        return GakuMotion::native_live::ArrayElements(values, count);
     }
     inline void Resolve(HMODULE module)
     {

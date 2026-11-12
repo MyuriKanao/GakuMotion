@@ -100,7 +100,7 @@ namespace GakuMotion::native_live::composition
     {
         Track kind{};
         bool clips{};            // Non-empty and every clip has the expected playable asset type.
-        bool clipMode{true};     // AnimationTrack without an infinite/recorded clip.
+        bool clipMode{true};     // false: AnimationTrack in infinite mode (one recorded clip, no TimelineClips).
         Binding binding{};
         unsigned rootFeatures{}; // Admitted features of the bound object's root.
         bool nested{};           // Has a non-group parent track.
@@ -126,7 +126,13 @@ namespace GakuMotion::native_live::composition
     inline unsigned Decide(const TrackFacts& track, unsigned mask)
     {
         if (mask & ~All) throw std::runtime_error("composition feature mask invalid");
-        if (track.kind == Track::Unsupported || !track.clips || (track.kind == Track::Animation && !track.clipMode)) return 0;
+        if (track.kind == Track::Unsupported) return 0;
+        // Infinite-mode AnimationTracks carry one recorded clip and no
+        // TimelineClips. In tln_live_all-001/012/019 the screen UV layers and
+        // the RealLight / DecoLight curves are such tracks; they follow the
+        // same binding rules as clip-mode tracks.
+        const bool infinite = track.kind == Track::Animation && !track.clipMode;
+        if (!track.clips && !infinite) return 0;
         // A child of an excluded track cannot be attached without its parent.
         if (track.nested && !(track.parent & mask)) return 0;
         if (track.binding == Binding::Hidden || track.binding == Binding::Foreign) return 0;

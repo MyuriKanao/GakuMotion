@@ -12,7 +12,7 @@ namespace NativeFixture
     struct Class { int type; };
     enum Kind { Asset, EquipmentTrack, BpmTrack, OtherTrack, EquipmentClip, BpmClip, OtherClip, Group, Go, Director, Equipment, Receiver, Clip, Array, Box,
         ComponentAny, LightC, EqValue, Renderer, VolumeC, CrowdC, MonitorC, VideoC, CameraC, CanvasC, ActorC, AudioC, Text, Texture,
-        AnimTrack, LightTrack, VolTrack, CrowdTrack, VideoTrack, AnimClip, AuxClip, KindCount };
+        AnimTrack, LightTrack, VolTrack, CrowdTrack, VideoTrack, AnimClip, AuxClip, ControlTrack, VirtualActorC, VectorC, KindCount };
     inline Class classes[KindCount]{};
     struct Object
     {
@@ -23,18 +23,28 @@ namespace NativeFixture
         std::string name;
         std::array<char, 32> bytes{};
         double time{}, duration{60}; int manual{};
+        std::array<float, 3> position{};
     };
     enum Op { Create, Clone, Tracks, Clips, ClearChildren, ClearMarkers, Muted, SetMuted, UseBpm, ClipAsset, SetClipAsset,
         Parent, AddChild, AddTrack, GetAsset, Duration, SetFixed, SetDurationMode, SetAuto, SetManual, SetWrap, SetAsset,
         EquipmentReceiver, Init, Bind, Play, Valid, Stop, Dispose, ClearReceiver, Time, Evaluate, Update, Late, ReceiverUpdate,
         InstanceId, ComponentGo, Scene, SetActive, SetEnabled, Name, CameraTarget, CanvasMode, AudioStop, SetVideoAudio, SetParent,
-        GoTransform, TextureName, PropertyId, GetGlobal, SetGlobal, GetBinding, SetBinding, ClipMode, Last };
+        GoTransform, TextureName, PropertyId, GetGlobal, SetGlobal, GetBinding, SetBinding, ClipMode,
+        WorldPosition, SetLocalPosition, SetLocalParent, ChildCount, Last };
     inline std::vector<std::unique_ptr<Object>> objects;
     inline std::vector<std::string> calls;
     inline std::map<int, void*> globals;
     inline bool shallowClone{}, mainThread{true}, restoreReady{true};
     inline int frame{1}, mutations{}, captures{}, restores{}, destroyed{};
     inline int parentField{}, trackParentField{}, directorField{}, receiverField{}, controllerField{}, clipTrackField{};
+    inline int failParent{};
+    inline std::array<float, 3> World(Object* transform)
+    {
+        auto position = transform->position;
+        for (auto parent = transform->parent; parent; parent = parent->parent)
+            for (size_t i = 0; i < position.size(); ++i) position[i] += parent->position[i];
+        return position;
+    }
     inline void UpdateFn(void*, const void*) { calls.push_back("update"); }
     inline void LateFn(void*, const void*) { calls.push_back("late"); }
     inline void ReceiverFn(void*, const void*) { calls.push_back("receiver"); }
@@ -138,6 +148,19 @@ namespace NativeFixture
         case SetVideoAudio: value->mode = *static_cast<int*>(args[0]); break;
         case SetParent: value->parent = O(args[0]); calls.push_back("lift"); break;
         case GoTransform: return value;
+        case WorldPosition: return Boxed(World(value));
+        case SetLocalPosition: value->position = *static_cast<std::array<float, 3>*>(args[0]); break;
+        case SetLocalParent:
+            if (*static_cast<bool*>(args[1])) throw std::runtime_error("placement must preserve local animation coordinates");
+            value->parent = O(args[0]);
+            if (failParent) { --failParent; throw std::runtime_error("partial synthetic parent failure"); }
+            break;
+        case ChildCount:
+        {
+            int count{};
+            for (const auto& child : objects) if (child->alive && child->kind == Go && child->parent == value) ++count;
+            return Boxed(count);
+        }
         case TextureName:
         {
             if (*static_cast<int*>(args[0]) != 0) throw std::runtime_error("no further synthetic texture slot");
@@ -215,7 +238,15 @@ namespace NativeLiveRuntime
         // Profile and behaviour reflection is not modelled: synthetic clips carry neither.
         inline void* Field(void*, const char*, Type) { return nullptr; }
         inline void* ReferenceField(void*, const char*) { return nullptr; }
-        inline const void* Find(void*, const char*, bool, Type, std::initializer_list<Type>, bool = false) { return nullptr; }
+        inline void* Unity(const char* name) { return std::strcmp(name, "Vector3") == 0 ? C(VectorC) : nullptr; }
+        inline const void* Find(void* owner, const char* name, bool, Type, std::initializer_list<Type> args, bool = false)
+        {
+            if (owner != C(Go)) return nullptr;
+            if (!std::strcmp(name, "get_position")) return M(WorldPosition);
+            if (!std::strcmp(name, "SetParent") && args.size() == 2) return M(SetLocalParent);
+            if (!std::strcmp(name, "get_childCount")) return M(ChildCount);
+            return nullptr;
+        }
         inline void* FieldObject(void* object, void*, Arena&) { return O(object)->director; }
         inline void FieldObjectSet(void* object, void* field, void* value)
         {
@@ -237,7 +268,8 @@ namespace NativeLiveRuntime
         *getAsset = M(GetAsset), *directorDuration = M(Duration), *equipmentReceiver = M(EquipmentReceiver), *setFixedDuration = M(SetFixed), *setDurationMode = M(SetDurationMode),
         *setAutoPlay = M(SetAuto), *setManual = M(SetManual), *setWrap = M(SetWrap), *setAsset = M(SetAsset), *equipmentInit = M(Init), *equipmentBind = M(Bind),
         *directorPlay = M(Play), *validGraph = M(Valid), *directorStop = M(Stop), *equipmentDispose = M(Dispose), *receiverClear = M(ClearReceiver),
-        *directorTime = M(Time), *directorEvaluate = M(Evaluate), *equipmentUpdate = M(Update), *equipmentLate = M(Late), *receiverUpdate = M(ReceiverUpdate);
+        *directorTime = M(Time), *directorEvaluate = M(Evaluate), *equipmentUpdate = M(Update), *equipmentLate = M(Late), *receiverUpdate = M(ReceiverUpdate),
+        *setLocalPosition = M(SetLocalPosition);
     inline void *clipParentField = &parentField, *trackParentField = &NativeFixture::trackParentField,
         *equipmentDirectorField = &directorField, *equipmentReceiverField = &receiverField,
         *clipControllerField = &controllerField, *clipTrackField = &NativeFixture::clipTrackField;
@@ -250,6 +282,7 @@ namespace NativeLiveRuntime
         for (const auto& object : objects) if (object->alive && object->go && object->go->scene == scene && Is(object.get(), type)) result.push_back(object.get());
         return result;
     }
+    inline bool IsDirectorControl(void* track) { return track && O(track)->kind == ControlTrack; }
     inline void* NewGo(const char* name, int scene, r::Arena&)
     { auto go = New(Go); go->scene = scene; go->active = false; go->go = go; go->name = name; return go; }
     inline void NewGo(r::Root& owned, const char* name, int scene, r::Arena& roots) { owned = r::Root(NewGo(name, scene, roots)); }
@@ -268,7 +301,7 @@ namespace NativeLiveRuntime
             void *profile{}, *volumeComponent{}, *profileComponents{};
             void *lightAnchor{}, *equipmentValue = C(EqValue), *volume = C(VolumeC), *crowd = C(CrowdC), *audienceVolume{};
             void *renderer = C(Renderer), *decal{}, *monitor = C(MonitorC), *videoPlayer = C(VideoC), *mob{};
-            void *actor = C(ActorC), *virtualActor{}, *virtualCamera{}, *audio = C(AudioC), *listener{}, *liveController{}, *criPlayer{};
+            void *actor = C(ActorC), *virtualActor = C(VirtualActorC), *virtualCamera{}, *audio = C(AudioC), *listener{}, *liveController{}, *criPlayer{};
             void *particle{}, *camera = C(CameraC), *canvas = C(CanvasC);
             const void *getBinding = M(GetBinding), *setBinding = M(SetBinding), *clipMode = M(ClipMode), *cameraTarget = M(CameraTarget);
             const void *canvasMode = M(CanvasMode), *setVideoAudio = M(SetVideoAudio), *audioStop = M(AudioStop), *setParent = M(SetParent);

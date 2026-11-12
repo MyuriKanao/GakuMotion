@@ -294,11 +294,13 @@ namespace GakuMotion
 		{
 			std::lock_guard<std::mutex> lock(stageMutex);
 			injectionEnabled = false;
+			// Invalidate discovery now, but retain the old restoration ledger until
+			// asynchronous lighting cleanup completes. SetInjectionEnabled retries it.
+			candidatesDiscovered = false;
+			visibilityRefreshRequested = true;
 			suspensionRestored = RestoreForSuspension(nullptr);
 			if (!suspensionRestored) return false;
-			candidatesDiscovered = false;
 			DiscoverCandidates(activeActor, currentSceneName);
-			visibilityRefreshRequested = true;
 			return true;
 		}
 
@@ -533,6 +535,7 @@ namespace GakuMotion
 		void RescanCandidates(void* activeActor)
 		{
 			std::lock_guard<std::mutex> lock(stageMutex);
+			if (!suspensionRestored) return;
 			candidatesDiscovered = false;
 			DiscoverCandidates(activeActor, currentSceneName);
 		}
@@ -683,6 +686,15 @@ namespace GakuMotion
 				if (!go) return;
 				std::string shortName = api.fnGetObjectName(go);
 				if (shortName.empty()) return;
+				// Placement is a coordinate frame, not a background/lighting group.
+				// Keep the original roots' depth and visibility rules unchanged.
+				if (depth == 0 && shortName == native_live::kStageOriginRoot && !api.fnGetParent(tr))
+				{
+					const int count = std::min(api.fnGetChildCount(tr), kMaxChildrenPerNode);
+					for (int i = 0; i < count; ++i)
+						self(self, api.fnGetChild(tr, i), parentPath, parentIdx, depth, underLighting);
+					return;
+				}
 				if (IsActorOrProtectedNode(shortName)) return;
 
 				const bool isBg = IsBackgroundName(shortName);
