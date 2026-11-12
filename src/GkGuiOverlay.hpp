@@ -92,7 +92,9 @@ namespace GakuMotion
 		bool tempoAnalyzing{};
 		bool libraryRefreshing{false}, loadedSourceMissing{false}, loadedSourceChanged{false};
 		std::string boundActorLabel, targetActorLabel;
-		std::string initialPositionNotice;
+		std::string initialPositionNotice, facingNotice;
+		void (*fnSetInitialYaw)(void*, float){nullptr};
+		void (*fnFaceCamera)(void*){nullptr};
 		SoleMeasurementSettings soleSettings;
 		SoleMeasurementSnapshot soleSnapshot;
 		sole_pitch::Settings experimentalSolePitchSettings;
@@ -260,6 +262,8 @@ namespace GakuMotion
 		float solePlotSpanM{.65f};
 		float initialPositionEdit[3]{};
 		bool initialPositionEditing{false};
+		float initialYawEdit{0.0f};
+		bool initialYawEditing{false};
 #ifdef GKMOTION_GUI_ACTIVE
 		ImGuiTextFilter motionFilter;
 #ifdef GKMOTION_GUI_TEST

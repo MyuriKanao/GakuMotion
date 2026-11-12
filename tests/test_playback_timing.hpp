@@ -346,4 +346,55 @@ static void TestPlaybackTiming()
 			"imported gaze bones use facial file time together with expressions");
 		Check(TimingNear(morphWeight, 75.0f), "facial morphs use facial file time at the native face consumer");
 	}
+
+	BeginTest("gkclip facing correction turns hips in world space");
+	{
+		// Actor root (native facing Ry 90) -> Hips -> Spine. gkclip writes local
+		// rotations, so the yaw must be conjugated into the hips' parent frame.
+		static Transform root{}, hips{}, chest{};
+		root = {Quaternion::FromEulerDegreesXYZ(0, 90, 0), nullptr};
+		hips = {Quaternion{}, &root};
+		chest = {Quaternion{}, &hips};
+		MotionClip clip;
+		clip.format = MotionClip::Format::kGkClip;
+		clip.version = 5;
+		clip.fps = 1;
+		clip.total_frames = 1;
+		clip.duration_seconds = 1;
+		clip.bone_count = 2;
+		clip.bones = {{0, "Hips", true}, {7, "Spine", true}};
+		clip.bone_parents = BuildBoneParentIndex(clip.bones);
+		clip.bone_parent_hids = BuildBoneParentHids(clip.bones);
+		clip.root_positions.resize(1);
+		const Quaternion hipsLocal = Quaternion::FromEulerDegreesXYZ(10, 0, 5);
+		const Quaternion chestLocal = Quaternion::FromEulerDegreesXYZ(0, 0, 20);
+		clip.bone_rotations = {hipsLocal, chestLocal};
+		IdolController controller;
+		controller.fnGetBoneTransform = [](void*, int hid) -> void* { return hid == 0 ? &hips : hid == 7 ? &chest : nullptr; };
+		controller.fnGetTransformParent = [](void* p) -> void* { return static_cast<Transform*>(p)->parent; };
+		controller.fnGetWorldRotation = [](void* p, float* q) {
+			const auto rotation = World(static_cast<Transform*>(p));
+			q[0] = rotation.x; q[1] = rotation.y; q[2] = rotation.z; q[3] = rotation.w;
+		};
+		controller.fnSetLocalRotation = [](void* p, float x, float y, float z, float w) {
+			static_cast<Transform*>(p)->local = {x, y, z, w};
+		};
+		IdolBoneBinding binding;
+		binding.actor = actor;
+		binding.bindPoseCaptured = true;
+		binding.boneTransforms = {&hips, &chest};
+		binding.boneHids = {0, 7};
+		binding.restRotations.resize(2);
+		binding.restLocals.resize(2);
+		controller.ApplyMotionToBinding(binding, clip, 0, 0);
+		const Quaternion hipsWorldBefore = World(&hips), chestWorldBefore = World(&chest);
+		Check(QuatNear(hips.local, hipsLocal), "no facing correction leaves the gkclip local untouched");
+		controller.SetInitialYaw(-90.0f);
+		controller.ApplyMotionToBinding(binding, clip, 0, 0);
+		const Quaternion turn = Quaternion::FromEulerDegreesXYZ(0, -90, 0);
+		Check(QuatNear(World(&hips), turn * hipsWorldBefore), "hips world rotation is pre-multiplied by world yaw");
+		Check(QuatNear(World(&chest), turn * chestWorldBefore) && QuatNear(chest.local, chestLocal),
+			"children inherit the turn without their locals changing");
+		Check(QuatNear(root.local, Quaternion::FromEulerDegreesXYZ(0, 90, 0)), "actor root is never written");
+	}
 }

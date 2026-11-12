@@ -4,6 +4,7 @@
 #include "GkRestoreChecks.hpp"
 #include <array>
 #include <mutex>
+#include <optional>
 
 namespace GakuMotion
 {
@@ -139,6 +140,23 @@ namespace GakuMotion
 			return true;
 		}
 	};
+
+	// World-up yaw (degrees, same sign as Quaternion::FromEulerDegreesXYZ) that
+	// turns an actor's forward (+Z of its rotation) to face cameraPosition on
+	// the horizontal plane. Empty when the camera is directly above the pivot.
+	inline std::optional<float> FacingYawToward(const Quaternion& actorRotation, const Vector3& actorPosition,
+	                                            const Vector3& cameraPosition)
+	{
+		const Vector3 forward = actorRotation.Normalized().Rotate(Vector3{0.0f, 0.0f, 1.0f});
+		const float dx = cameraPosition.x - actorPosition.x, dz = cameraPosition.z - actorPosition.z;
+		if (!std::isfinite(dx) || !std::isfinite(dz) || dx * dx + dz * dz < 1e-6f ||
+			forward.x * forward.x + forward.z * forward.z < 1e-6f) return std::nullopt;
+		constexpr float kRad2Deg = 57.29577951308232f;
+		float yaw = (std::atan2(dx, dz) - std::atan2(forward.x, forward.z)) * kRad2Deg;
+		while (yaw > 180.0f) yaw -= 360.0f;
+		while (yaw <= -180.0f) yaw += 360.0f;
+		return yaw;
+	}
 
 	enum class CameraMode : int { Track = 0, Hold = 1, Follow = 2 };
 	enum class FollowBehavior : int { LookAt = 0, FollowMove = 1 };
@@ -310,6 +328,8 @@ namespace GakuMotion
 		bool (*fnActorPose)(void*, Vector3&, Quaternion&, Vector3&){nullptr};
 		// Read only on the Unity-thread tick; Hips already comes from fnActorPose.
 		bool (*fnFollowTarget)(void*, CameraFollowTarget, Vector3&){nullptr};
+		// World position of the camera currently rendering (game or plugin owned).
+		bool (*fnCameraPosition)(Vector3&){nullptr};
 		void (*fnReleaseVcam)(bool){nullptr};
 		// Includes virtual-camera/brain/focus mutations beyond CameraFrame.
 		CaptureRestoreStatus (*fnReleaseVcamForCapture)(){nullptr};
