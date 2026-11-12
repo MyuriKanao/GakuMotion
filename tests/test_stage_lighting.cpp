@@ -49,6 +49,21 @@ namespace
         fixtures.push_back(std::make_unique<Fixture>(Fixture{{kind, component, component + 100, scene}, Baseline()}));
         return *fixtures.back();
     }
+    void TestNativeBaseline()
+    {
+        auto controller = MakeController();
+        auto& light = Add(Kind::Light, 51);
+        auto& inactive = Add(Kind::Beam, 52); inactive.active = false;
+        auto& foreign = Add(Kind::Light, 53, 99);
+        Check(controller.Capture(17) && writes == 0 && controller.HasChanges(), "native baseline capture never writes and includes inactive stage devices");
+        light.value.intensity = 7; inactive.value.colorMode = 0; foreign.value.intensity = 5;
+        failWrites = 1;
+        Check(!controller.Restore() && controller.HasChanges(), "native baseline survives a partial restoration failure");
+        Check(controller.Restore() && light.value == Baseline() && inactive.value == Baseline() && foreign.value.intensity == 5,
+            "native baseline restores only the exact paired stage");
+        const int before = writes;
+        Check(controller.Update({Mode::SongTimeline}, 12, 17) && writes == before, "procedural adapter never synthesizes cues for native song mode");
+    }
     void TestSampler()
     {
         Settings settings{Mode::Cycle, 0, 1.25f, 128, 0.75f};
@@ -191,7 +206,7 @@ namespace
 }
 int main()
 {
-    TestSampler(); TestOwnership(); TestFailuresAndTransitions(); TestManagerLifecycle(); TestCatalogAndSettings();
+    TestNativeBaseline(); TestSampler(); TestOwnership(); TestFailuresAndTransitions(); TestManagerLifecycle(); TestCatalogAndSettings();
     std::printf("Stage lighting synthetic contracts: %d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }

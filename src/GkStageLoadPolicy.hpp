@@ -2,6 +2,7 @@
 
 #include "GkInjectionPolicy.hpp"
 #include "GkStageCatalog.hpp"
+#include "GkNativeLive.hpp"
 #include <string>
 #include <string_view>
 
@@ -9,8 +10,9 @@ namespace GakuMotion::stage_load
 {
     inline bool IsTarget(std::string_view key) noexcept
     {
-        return FindStage(key) != nullptr;
+        return FindStage(key) != nullptr || native_live::catalog.HasStage(key);
     }
+    inline bool IsSavedTarget(std::string_view key) noexcept { return FindStage(key) != nullptr; }
 
     // A rewritten resource-name request is not proof of a completed load.
     // Admission additionally requires the exact live owner and Active Scene.

@@ -75,6 +75,7 @@ namespace GakuMotion
 		GuiOverlay gui;
 		StageManager stageManager;
 		std::string stageLoadNotice;
+		std::string nativeLiveCatalogNotice;
 		injection::Policy injectionPolicy;
 		// The runtime enables enforcement before initialization. Offline consumers
 		// may exercise the playback core without a game or native hook service.
@@ -714,7 +715,7 @@ namespace GakuMotion
 						StageSettings settings = cmd.stageSettings;
 						// A stale visual-settings snapshot cannot overwrite the separately
 						// saved load-time selection from the dedicated control.
-						settings.loadReplacementKey = stageManager.GetLoadReplacementKey();
+						settings.loadReplacementKey = stageManager.settings.loadReplacementKey;
 						settings.liveLighting = stage_light::Sanitize(settings.liveLighting);
 						if (settings.liveLighting != stageManager.settings.liveLighting &&
 							!SaveStageLightingSettings(settings.liveLighting))
@@ -1408,7 +1409,7 @@ namespace GakuMotion
 
 		bool SetStageLoadReplacement(const std::string& key)
 		{
-			if ((!key.empty() && !stage_load::IsTarget(key)) || configRoot.empty())
+			if ((!key.empty() && !stage_load::IsSavedTarget(key)) || configRoot.empty())
 			{
 				stageLoadNotice = "舞台选择未保存：选项无效或配置目录尚未就绪";
 				return false;
@@ -1433,7 +1434,7 @@ namespace GakuMotion
 		bool SaveStageLightingSettings(const stage_light::Settings& lighting)
 		{
 			std::string error;
-			stage_load::Settings saved{stageManager.GetLoadReplacementKey(), lighting};
+			stage_load::Settings saved{stageManager.settings.loadReplacementKey, lighting};
 			if (configRoot.empty() || !saved.Save(configRoot + "/stage.json", error))
 			{
 				stageLoadNotice = "灯光设置保存失败，保留原设置: " + error;
@@ -2935,6 +2936,7 @@ namespace GakuMotion
 			ctx.stageStatusNotice = stageManager.statusNotice;
 			ctx.stageLoadNotice = stageLoadNotice;
 			ctx.stageLightingNotice = stageManager.lightingStatusNotice;
+			ctx.nativeLiveCatalogNotice = nativeLiveCatalogNotice;
 			ctx.fnSetStageLoadReplacement = [](void* self, const char* key)
 			{
 				static_cast<Core*>(self)->QueueStageLoadReplacement(key ? key : "");
