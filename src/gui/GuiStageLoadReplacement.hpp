@@ -11,7 +11,8 @@ namespace GakuMotion
 	{
 		ImGui::PushID("stage_load_replacement");
 		ImGui::TextUnformatted("摄影舞台替换（实验，载入时生效）");
-		ImGui::TextWrapped("%zu 个固定场景入口；新增场景需游戏内验收。[舞台] 页可选择程序化灯光或原生歌曲时间轴；原生歌曲模式优先加载歌曲的配套舞台。", stage_load::stages.size());
+		ImGui::TextWrapped("%zu 个固定场景入口，是本插件手工核对过的一部分，不是游戏全部舞台；新增场景需游戏内验收。"
+			"[舞台] 页选择“原生模板”时，自动载入该曲的配套舞台，该舞台不在此列表中。", stage_load::stages.size());
 		const auto* current = stage_load::FindStage(ctx.stageSettings.loadReplacementKey);
 		ImGui::BeginDisabled(!ctx.fnSetStageLoadReplacement);
 		if (ImGui::BeginCombo("下次摄影背景", current ? current->name : "原生摄影背景", ImGuiComboFlags_HeightLarge))

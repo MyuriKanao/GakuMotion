@@ -16,6 +16,24 @@ void TestStageLightingGui(const std::filesystem::path& root)
     std::string error;
     Check(saved.Load(MotionPathToUtf8(app.fixture / "stage.json"), error) && saved.lighting.mode == stage_light::Mode::Cycle,
         "GUI effect selection persists without changing the current stage");
+    app.Click("灯光配色"); app.Settle();
+    int presetItems = 0;
+    for (const auto& palette : stage_light::palettes) if (app.ItemWithLabel(palette.name)) ++presetItems;
+    Check(presetItems == static_cast<int>(stage_light::palettes.size()) && app.ItemWithLabel("自定义"),
+        "palette combo lists every preset and the custom option");
+    app.Click(stage_light::palettes[4].name); app.Settle();
+    Check(app.core.stageManager.settings.liveLighting.palette == 4 && !app.ItemWithLabel("颜色 1"),
+        "a preset palette reaches Core and hides custom color pickers");
+    app.Click("灯光配色"); app.Settle(); app.Click("自定义"); app.Settle();
+    Check(app.core.stageManager.settings.liveLighting.palette == stage_light::kCustomPalette &&
+        app.ItemWithLabel("颜色 1") && app.ItemWithLabel("颜色 3") && !app.ItemWithLabel("颜色 4"),
+        "custom palette shows one picker per configured color");
+    Check(saved.Load(MotionPathToUtf8(app.fixture / "stage.json"), error) && saved.lighting.palette == stage_light::kCustomPalette,
+        "custom palette choice persists");
+    const auto customBefore = app.core.stageManager.settings.liveLighting.custom;
+    app.Click("颜色 1"); app.Settle(); app.Key(ImGuiKey_Escape); app.Settle();
+    Check(app.core.stageManager.settings.liveLighting.custom == customBefore,
+        "opening and closing a color picker without editing does not rewrite settings");
     app.core.gui.developerMode = true;
     app.core.gui.activePage = GuiPage::Developer;
     app.Settle();

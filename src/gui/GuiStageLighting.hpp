@@ -5,6 +5,44 @@
 #ifdef GKMOTION_GUI_ACTIVE
 namespace GakuMotion
 {
+    // Preset or custom palette. A color drag edits a local draft and commits
+    // once on release, so stage.json is not rewritten every frame.
+    inline bool DrawLightingPalette(stage_light::Settings& lighting)
+    {
+        bool changed = false;
+        const auto& presets = stage_light::palettes;
+        const char* caption = lighting.palette == stage_light::kCustomPalette ? "自定义" : presets[lighting.palette].name;
+        if (ImGui::BeginCombo("灯光配色", caption))
+        {
+            for (int i = 0; i <= stage_light::kCustomPalette; ++i)
+            {
+                const char* name = i == stage_light::kCustomPalette ? "自定义" : presets[i].name;
+                if (ImGui::Selectable(name, lighting.palette == i) && lighting.palette != i) { lighting.palette = i; changed = true; }
+                if (lighting.palette == i) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        if (lighting.palette != stage_light::kCustomPalette) return changed;
+        static std::array<stage_light::Rgb, stage_light::kMaxCustomColors> draft{};
+        static bool editing{};
+        if (!editing) draft = lighting.custom;
+        int count = lighting.customCount;
+        if (ImGui::SliderInt("自定义颜色数", &count, 2, stage_light::kMaxCustomColors))
+        { lighting.customCount = count; changed = true; }
+        bool active{}, released{};
+        for (int i = 0; i < lighting.customCount; ++i)
+        {
+            const std::string label = "颜色 " + std::to_string(i + 1);
+            ImGui::ColorEdit3(label.c_str(), draft[i].data(), ImGuiColorEditFlags_NoInputs);
+            active |= ImGui::IsItemActive();
+            released |= ImGui::IsItemDeactivatedAfterEdit();
+        }
+        editing = active;
+        if (released && draft != lighting.custom) { lighting.custom = draft; changed = true; }
+        ImGui::TextWrapped("拖动取色时仅预览本页；松开后保存并应用到灯光。");
+        return changed;
+    }
+
     inline bool DrawStageLightingControl(StageSettings& settings, const GuiContext& ctx)
     {
         bool changed = false;
@@ -26,8 +64,7 @@ namespace GakuMotion
             changed |= ImGui::SliderFloat("灯光拍点偏移", &lighting.nativeOffset, -10.0f, 10.0f, "%.2f s");
         }
         ImGui::BeginDisabled(lighting.mode == stage_light::Mode::Native || lighting.mode == stage_light::Mode::SongTimeline);
-        const char* palettes[]{"霓虹（青 / 紫 / 粉）", "暖色（金 / 红）", "冷色（蓝 / 青）"};
-        changed |= ImGui::Combo("灯光配色", &lighting.palette, palettes, 3);
+        changed |= DrawLightingPalette(lighting);
         changed |= ImGui::SliderFloat("灯光强度", &lighting.strength, 0.0f, 3.0f, "%.2fx");
         ImGui::BeginDisabled(lighting.mode==stage_light::Mode::AutoBeat);
         changed |= ImGui::SliderFloat("灯光 BPM", &lighting.bpm, 30.0f, 240.0f, "%.0f");

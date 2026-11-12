@@ -117,9 +117,16 @@ namespace NativeLiveRuntime
                 (c.result.excluded ? "；含演员/镜头/音频/叠加层/未同步粒子的组 " + std::to_string(c.result.excluded) + " 个保持隐藏" : "") +
                 "（外部动作与镜头不接管；画面待验收）";
         }
-        if (settings.songKey.empty()) return "自动匹配当前舞台的原生灯光模板；无模板时可选择通用节拍灯光（不伪装为原生编排）";
-        if (!live::catalog.Find(settings.songKey)) return "原生灯光模板目录待就绪；播放曲目仍由曲库选择";
-        return "原生模板待机：请重新进入摄影载入模板配套舞台；灯光将按曲库当前曲目的拍数重定时";
+        const auto& active = SceneOwnerRuntime::cachedActiveScene;
+        if (settings.songKey.empty())
+            return "自动匹配：当前舞台 " + (active.empty() ? std::string("未知") : active) +
+                " 没有原生灯光模板；可手动选择模板后重新进入摄影，或改用通用节拍灯光";
+        const auto song = live::catalog.Find(settings.songKey);
+        if (!song) return "原生灯光模板目录待就绪；播放曲目仍由曲库选择";
+        if (active != song->stage)
+            return "原生模板待机：当前舞台 " + (active.empty() ? std::string("未知") : active) + "，模板需要 " + song->stage +
+                "。请退出偶像摄影再进入，插件会自动载入配套舞台；原生切换背景或横竖屏会回到摄影场景";
+        return "原生模板待机：配套舞台已载入，等待摄影凭据或曲库节拍就绪";
     }
     inline void PollRestoration(bool allowed, const light::Settings& settings)
     {
@@ -157,7 +164,17 @@ namespace NativeLiveRuntime
         }
         requestedOffset = settings.nativeOffset;
         const bool ok = session.Update(Desired(settings), seconds);
-        notice = Notice(settings); return ok;
+        notice = Notice(settings);
+        // One line per state change, so stage mismatch or a load failure is
+        // visible in gakuloader.log without per-frame output.
+        static std::string logged;
+        if (notice != logged)
+        {
+            logged = notice;
+            GakuMotion::host::Info("[GakuMotion][NativeLive] state song=%s active_scene=%s: %s", settings.songKey.c_str(),
+                SceneOwnerRuntime::cachedActiveScene.c_str(), notice.c_str());
+        }
+        return ok;
     }
     inline void Initialize(HMODULE module)
     {
